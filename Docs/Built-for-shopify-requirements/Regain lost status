@@ -1,0 +1,37 @@
+Regain lost status
+Your app can lose Built for Shopify status if it fails to meet any required criteria on an ongoing basis.
+
+If your app loses Built for Shopify status, then you'll be notified by email, and/or through the Partner Dashboard.
+
+You can monitor the automated criteria on the Distribution page of your Partner Dashboard to see if your app is at risk of losing status. Manually checked criteria are monitored on an ongoing basis via ongoing reviews of Built for Shopify certified apps
+
+Anchor to Automated criteriaAutomated criteria
+If your app fails to meet certain key criteria, then it will immediately lose Built for Shopify status. These key criteria ensure that your app meets our App Store requirements and uses the newest Shopify technologies. Failing to meet one of these criteria also might trigger an audit of your app.
+
+If your app fails to meet other criteria that track ongoing quality signals, then you have a 60 day grace period to meet the criteria again before your app loses Built for Shopify status. To determine whether your app is failing to meet any of these criteria, view the criteria checklist on the Distribution page of your Partner Dashboard.
+
+For more information about each of these criteria, refer to Achievement criteria.
+
+Criterion	Comes into effect
+Good Partner standing	Immediately
+Meets App Store requirements
+
+Your app fails this criterion if it fails an audit and is delisted.	Immediately
+Uninstalls cleanly: uses theme app extensions	Immediately
+App is embedded in the Shopify admin	Immediately
+Minimizes impact on checkout speed	After 60 days of failure
+Admin performance: meets 75th percentile Web Vitals targets	After 60 days of failure
+Minimum number of installs	After 60 days of failure
+Minimum number of reviews	After 60 days of failure
+Minimum app rating	After 60 days of failure
+Anchor to Ongoing reviewsOngoing reviews
+Apps are also monitored on an ongoing basis for all manually checked criteria. An app may be reviewed at any time. If issues are found, then apps will have 60 days to rectify any issues. Apps that don't address failures in time will have their Built for Shopify status removed.
+
+Anchor to Annual reviewsAnnual reviews
+Apps are reviewed annually to ensure they continue to adhere to the Built for Shopify standards. Apps found to no longer adhere to Built for Shopify standards will be notified by email, and will have 60 days to rectify any failures that arise. Apps that do not address failures in time will have their Built for Shopify status removed.
+
+Anchor to Regain Built for Shopify statusRegain Built for Shopify status
+You'll automatically regain Built for Shopify status as soon your app meets all of the criteria again. You don't need to reapply.
+
+After you regain Built for Shopify status, your app might be audited to ensure compliance with all manually assessed criteria, and ensure that the app meets all current App Store requirements.
+

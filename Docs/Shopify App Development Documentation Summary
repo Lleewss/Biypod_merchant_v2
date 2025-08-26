@@ -1,0 +1,1857 @@
+# Shopify App Development Documentation Summary
+
+## GraphQL Admin API (Shopify Apps)
+
+### About GraphQL (Admin API)
+
+The GraphQL Admin API is Shopify\'s recommended technology for building
+app integrations, replacing the legacy REST API. GraphQL uses a single
+endpoint and a query language to retrieve or modify data. Unlike REST,
+which has multiple endpoints for each resource, GraphQL allows you to
+request exactly the data you need in one
+call[\[1\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Unlike%20REST%20APIs%2C%20which%20have,responds%20with%20only%20that%20data).
+This results in less over-fetching and more efficient data retrieval.
+
+**Key Benefits of GraphQL vs REST:** GraphQL can combine multiple
+resources in one request, strongly typed schema (with introspection),
+and only returns requested fields. For example, GraphQL can fetch an
+order\'s details, the product variants in that order, and customer info
+in one query, whereas REST would require multiple
+endpoints[\[2\]](https://shopify.dev/docs/apps/build/graphql#:~:text=GraphQL%20REST)[\[3\]](https://shopify.dev/docs/apps/build/graphql#:~:text=For%20example%2C%20in%20the%20case,the%20product%20in%20the%20order).
+GraphQL also provides better knowledge of app data usage, helping
+Shopify deprecate fields
+safely[\[4\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Shopify%20knows%20what%20data%20an,app%20is%20using).
+Shopify's GraphQL documentation is embedded in the schema itself, making
+it a first-class citizen (unlike REST, which depends on external
+docs)[\[5\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Documentation%20is%20a%20first).
+
+**Basic GraphQL Structure:** A GraphQL request includes: - **Query or
+Mutation**: Operation name (`query` or `mutation`) and optional variable
+declarations. - **Fields Selection**: Specify fields to retrieve or
+write, nested as needed. - **Single Endpoint**: Always posted to
+`/admin/api/{version}/graphql.json` with a JSON payload.
+
+**Simple Example:** A query to retrieve a product by ID:
+
+    query {
+      product(id: "gid://shopify/Product/10079785100") {
+        title
+        handle
+        createdAt
+      }
+    }
+
+This returns JSON data mirroring the query
+structure[\[6\]](https://shopify.dev/docs/apps/build/graphql#:~:text=query%20)[\[7\]](https://shopify.dev/docs/apps/build/graphql#:~:text=).
+GraphQL request JSON keys (like `data.product.title`) follow the query
+shape[\[8\]](https://shopify.dev/docs/apps/build/graphql#:~:text=).
+
+### GraphQL Queries (Retrieving Data)
+
+GraphQL **queries** read data (analogous to GET in REST). All queryable
+fields are rooted at the `QueryRoot`
+object[\[9\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=Anchor%20to%20QueryRootQuery%20Root).
+You typically don\'t include `QueryRoot` in your query explicitly; you
+just start with the fields you
+need[\[10\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=Note).
+
+**Nodes and Edges:** Data is modeled as **nodes** connected by
+**edges**. A node is an object with a global ID (e.g. an Order, Product,
+etc.), and edges represent connections (e.g. a product has edges to its
+variants). You can fetch a single node by ID or follow edges to get
+collections of related
+nodes[\[11\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=and%20use%20the%20,method)[\[12\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=A%20GraphQL%20API%20models%20data,that%20you%20want%20to%20retrieve).
+
+**Selecting Fields:** In queries, you list exactly which fields to
+return. For example, to get a customer\'s name and phone, you query:
+
+    customer(id: "...") {
+      displayName
+      phone
+    }
+
+This returns only those
+fields[\[13\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=query%20)[\[14\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=).
+
+**Connections & Pagination:** When a field returns a list (pluralized,
+like `products` or `variants`), it\'s a **connection**. You must provide
+a `first` (or `last`) argument to limit
+results[\[15\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=When%20you%20select%20a%20connection%2C,limiting%20%20and%20%2037).
+Connections return either an array of `nodes` or an array of `edges`
+containing `node` objects. Using `nodes` is a shorthand that directly
+gives the list of
+items[\[16\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=,...%20%7D).
+If more results exist than requested, you can use cursor-based
+pagination to fetch the next
+set[\[17\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=all%20the%20data%20that%27s%20available).
+For example:
+
+    products(first: 3) {
+      nodes { id handle }
+    }
+
+fetches first 3
+products[\[18\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=query%20).
+
+**Filtering with Search Queries:** Many list connections support a
+`query` argument to filter results. For example, to get first 2
+fulfilled orders:
+
+    orders(first:2, query:"fulfillment_status:shipped") {
+      nodes { id name displayFulfillmentStatus }
+    }
+
+This returns only shipped
+orders[\[19\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=query%20)[\[20\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=).
+
+### GraphQL Mutations (Creating/Modifying Data)
+
+GraphQL **mutations** create or update data (analogous to
+POST/PUT/DELETE). They are also sent to the GraphQL endpoint with a
+`mutation` operation.
+
+**Mutation Structure:** A typical mutation has four
+parts[\[21\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=,These%20are%20the%20pieces): 1.
+The `mutation` keyword (operation type). 2. The **mutation field name**
+(e.g. `customerCreate`, `productUpdate`). 3. The **input argument** with
+the data for the operation (often using an input object type). 4. The
+**return fields selection** specifying what data to return from the
+mutation (e.g. the new object\'s `id`, or any errors).
+
+For example, to create a customer:
+
+    mutation {
+      customerCreate(input: { firstName: "Ayumu", lastName: "Hirano", email: "ayumu@example.com" }) {
+        customer { id }
+        userErrors { field message }
+      }
+    }
+
+Here, `customerCreate` is the mutation field, the `input` is a
+`CustomerInput` object, and we request the new customer\'s `id` and any
+`userErrors`[\[21\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=,These%20are%20the%20pieces)[\[22\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=customer%20).
+
+**Input Objects:** Many mutations use dedicated input object types for
+complex data. For example, `customerCreate` expects a `CustomerInput`
+which defines all creatable
+fields[\[23\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=For%20example%2C%20the%20customerCreate%20,create%20or%20modify%20a%20customer).
+This keeps queries cleaner and allows reusing inputs across mutations.
+
+**Return Fields & Errors:** Each mutation has specific return fields.
+Often, it returns the affected object (or relevant data) and a
+`userErrors` field. The `userErrors` array contains error messages if
+the mutation failed (with fields and
+messages)[\[24\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=want%20to%20include%20in%20the,response)[\[25\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=).
+It\'s recommended to always request `userErrors` in mutations to aid in
+error
+handling[\[26\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=want%20to%20include%20in%20the,response).
+
+**Example -- Create a Customer:** The above `customerCreate` example
+would return the new customer\'s global ID and empty errors if
+successful:
+
+    "data": {
+      "customerCreate": {
+        "customer": { "id": "gid://shopify/Customer/1310036885526", "displayName": "Ayumu Hirano" },
+        "userErrors": []
+      }
+    }
+    ```【16†L515-L523】
+
+    **Chaining Multiple Mutations:** GraphQL allows aliasing and sending multiple mutations in one request. For example, you could set different tags on multiple customers in one request by aliasing three `customerUpdate` mutations【19†L399-L407】【19†L480-L488】. Each operation has a custom alias (e.g. `VipGold: customerUpdate(...)`) and its own input. This does **not** circumvent rate limits, but can reduce HTTP round-trips【19†L375-L384】【19†L387-L395】. The response will have separate entries for each alias.
+
+    ### GraphQL Variables
+    **Using Variables:** Instead of hardcoding arguments in queries/mutations, GraphQL allows **variables** to make requests reusable. Variables are declared in the query signature and provided in a separate JSON payload. For example:
+    ```graphql
+    mutation ($input: CustomerInput!) {
+      customerCreate(input: $input) {
+        customer { id displayName }
+        userErrors { field message }
+      }
+    }
+
+Variables JSON:
+
+    { "input": { "firstName": "Ayumu", "lastName": "Hirano", "email": "ayumu@example.com" } }
+
+This separates static query text from dynamic
+values[\[28\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=Anchor%20to%20Query%20sectionQuery%20section)[\[29\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=In%20the%20variable%20section%2C%20variables,defined%20as%20a%20JSON%20object).
+
+Using variables simplifies changing inputs without editing the query
+text, and is especially useful for user-supplied data or running the
+same query with different
+arguments[\[30\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=You%20can%20simplify%20GraphQL%20queries,same%20requests%20with%20different%20arguments).
+It also allows secure handling of sensitive data (like IDs, inputs) on
+the client side.
+
+**Variable Structure:** A GraphQL request can be divided into: - **Query
+Section:** includes the operation and variable declarations (prefixed
+with `$` and their
+type)[\[28\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=Anchor%20to%20Query%20sectionQuery%20section). -
+**Variables Section:** a separate JSON object mapping the variable names
+to
+values[\[31\]\[32\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=).
+
+Example from Shopify:
+
+    mutation ($input: CustomerInput!) {
+      customerCreate(input: $input) { ... }
+    }
+
+with variables:
+
+    { "input": { "firstName": "Ayumu", "lastName": "Hirano", "email": "ayumu@example.com" } }
+    ```【2†L139-L147】【3†L304-L312】.
+
+    ### Advanced GraphQL Concepts
+    Shopify’s GraphQL guides also cover advanced topics:
+
+    - **Inline Fragments:** These allow conditionally requesting fields based on object type, using the `... on Type` syntax. This is useful if a query returns an interface or union type and you need fields from a specific implementing type. For example, using an inline fragment to get fields of a `LineItem` when querying a `node(id: $id)` that might return various types【17†L135-L143】【17†L159-L168】. With inline fragments, you can fetch type-specific data in a single query.
+
+    - **Multi-query (Batching):** GraphQL supports sending multiple queries or mutations in one request by aliasing (as mentioned above). This can be used to run similar operations with different arguments, or different operations together【19†L375-L383】. All operations still count toward rate limits cumulatively【19†L379-L387】.
+
+    **Example Advanced Scenario:** Finding where a specific line item is stocked – use `node(id: ...)` to fetch a `LineItem`, then inline fragments to get its variant’s inventory levels and location details in one go【17†L161-L170】【17†L218-L226】.
+
+    **Batch Update Example:** Setting different tags for multiple customers in one mutation request:
+    ```graphql
+    mutation {
+      VipGold: customerUpdate(input: {id: "...", tags: ["Gold"]}) { customer { tags } }
+      VipPlatinum: customerUpdate(input: {id: "...", tags: ["Platinum"]}) { customer { tags } }
+      VipDiamond: customerUpdate(input: {id: "...", tags: ["Diamond"]}) { customer { tags } }
+    }
+
+Each alias (`VipGold`, etc.) runs the `customerUpdate` mutation with
+different inputs in
+parallel[\[35\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=mutation%20)[\[36\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=VipDiamond%3A%20customerUpdate).
+
+## Migrating from REST to GraphQL (Admin API)
+
+As of October 1, 2024, the REST Admin API is considered legacy. All new
+development should use
+GraphQL[\[37\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Legacy).
+Migrating an app from REST to GraphQL involves rethinking how data is
+retrieved and manipulated:
+
+### Why Migrate to GraphQL?
+
+GraphQL addresses common REST pain points: over-fetching data, multiple
+calls for related data, weak typing, etc. Migrating yields performance
+improvements and access to new features that are only in
+GraphQL[\[38\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=GraphQL%20is%20Shopify%27s%20technology%20of,worked%20with%20a%20REST%20API)[\[39\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=However%2C%20some%20REST%20resources%20and,split%20between%20multiple%20GraphQL%20mutations).
+Shopify's evolving product and feature set (e.g. new product model, bulk
+operations) are increasingly GraphQL-first.
+
+### Migration Guides
+
+Shopify provides a structured migration guide with several parts:
+
+- **Getting Started:** Overview of GraphQL benefits and references to
+  GraphQL
+  basics[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL)[\[41\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Anchor%20to%20Getting%20startedGetting%20started).
+
+- **Developer Tools & Resources:** Recommendations like the Shopify Dev
+  AI Assistant (which can convert REST calls to GraphQL), GraphiQL
+  explorers, etc., to help with
+  migration[\[42\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Explore%20the%20following%20developer%20tools,more%20about%20Shopify%20GraphQL%20APIs)[\[43\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=GraphQL%20Admin%20API%20reference%20Consult,GraphQL%20Admin%20and%20Storefront%20APIs).
+
+- **\"Learn how to migrate\"** (Detailed Guide): This guide covers **key
+  considerations** when moving from REST to GraphQL. It covers topics
+  such as finding GraphQL equivalents for REST endpoints, needed access
+  scope changes, dealing with IDs, pagination, error handling, rate
+  limiting,
+  etc.[\[44\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=When%20you%20begin%20using%20GraphQL%2C,using%20REST%20in%20their%20apps)[\[45\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Many%20REST%20Admin%20API%20resources,query%20or%20mutation%20in%20GraphQL).
+
+**Examples:** Many REST calls have direct GraphQL analogs. For
+instance: - Getting a customer: REST `GET /customers/{id}.json` vs
+GraphQL `customer(id: "..."){...}` return similar
+info[\[46\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Retrieving%20information%20about%20a%20single,similar%20in%20REST%20and%20GraphQL)[\[47\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=REST).
+
+GraphQL may split some REST operations into multiple smaller mutations.
+E.g., a single REST POST might become multiple GraphQL mutations
+focusing on specific parts of the
+task[\[39\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=However%2C%20some%20REST%20resources%20and,split%20between%20multiple%20GraphQL%20mutations).
+
+**ID Translation:** GraphQL uses global IDs (GIDs). The guide shows how
+to convert REST resource IDs to GraphQL IDs by prefixing with
+`gid://shopify/ResourceType/`. For example, REST product ID `123456`
+becomes
+`"gid://shopify/Product/123456"`[\[48\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=Anchor%20to%20Mapping%20Product%20and,IDs%20to%20Graph%20QL%20GIDs)[\[49\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=When%20migrating%20from%20REST%20to,using%20an%20existing%20REST%20ID).
+There\'s no need to store both IDs in your database---GraphQL IDs can be
+derived on the fly from known REST IDs and vice
+versa[\[48\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=Anchor%20to%20Mapping%20Product%20and,IDs%20to%20Graph%20QL%20GIDs).
+
+**Pagination:** In GraphQL, use connections with `first/last` and
+`cursor` instead of page numbers and since_ids. The migration guide
+explains how to implement cursor-based pagination in GraphQL for
+previously paginated REST
+data[\[50\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=,27)[\[51\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=You%20can%20filter%20connections%20with,that%20match%20a%20search%20query).
+
+**Error Handling:** GraphQL surfaces user errors differently (in
+`userErrors` fields). Developers should handle these analogous to
+checking REST HTTP error
+responses[\[26\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=want%20to%20include%20in%20the,response).
+
+**Rate Limiting:** The guide covers that GraphQL uses a point-based rate
+limit system. It encourages combining data into one request when
+possible, but note that one large query with many fields still counts
+accordingly to
+complexity[\[34\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=Note).
+
+**Optimizing Queries:** It suggests using GraphQL features like
+**fragments**, **aliases**, **variables**, and **connections** to
+replicate complex data retrieval that might have required multiple REST
+calls[\[44\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=When%20you%20begin%20using%20GraphQL%2C,using%20REST%20in%20their%20apps)[\[45\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Many%20REST%20Admin%20API%20resources,query%20or%20mutation%20in%20GraphQL).
+
+- **\"Update API calls in your app\"** (Code Examples for Libraries):
+  This part provides examples of how to change your code when using
+  various Shopify API libraries:
+- For **Shopify API (JavaScript)**: how to switch from `admin.rest`
+  calls (or REST resource classes) to `admin.graphql` client
+  calls[\[52\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20client%20type)[\[53\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20method%20Instead%20of,Add%20a%20query).
+  Example adjustments include using `client.query` instead of
+  `client.get`, passing a GraphQL query string, using GraphQL IDs, and
+  destructuring the nested `response.body.data`
+  object[\[53\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20method%20Instead%20of,Add%20a%20query)[\[54\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Destructure%20the%20response).
+- Similar guidance is given for **Ruby (shopify_api gem)**, **Node
+  (fetch/Axios)**, etc., showing how to form GraphQL queries and handle
+  responses.
+
+These examples show side-by-side code snippets ("REST version" vs
+"GraphQL version") for reading data (GET) and writing data (POST) in
+each library. For instance, using `Product.find` in REST vs
+`GraphQL client.query` with a `product { ... }` query in
+GraphQL[\[55\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Remix%3A%20Instead%20of%20creating%20an,create%20an%20admin.graphql%20client)[\[56\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Add%20a%20query).
+They also illustrate adjusting to GraphQL's nested JSON response
+(`response.body.data.<object>`). **Authentication and sessions** remain
+the same; the change is in how requests are made and
+processed[\[57\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=You%20don%27t%20need%20to%20update,update%20from%20REST%20to%20GraphQL).
+
+- **New Files Model:** Shopify introduced a new **unified file
+  management system** in GraphQL (as of early 2024). Instead of product
+  images being unique to each product, files (like images) are now
+  standalone objects that can be associated with multiple
+  resources[\[58\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=In%20early%202024%2C%20Shopify%20introduced,the%20process%20of%20updating%20files).
+  The migration guide\'s \"New files model\" section explains:
+
+- Use GraphQL mutations `fileCreate` and `fileUpdate` to handle files
+  once, and attach them to products via product mutations
+  (`productCreate`, `productUpdate`,
+  `productSet`)[\[59\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=Anchor%20to%20ProductsProducts).
+
+- Example: Previously, adding an image to a product used
+  `PUT /products/{id}/images.json` with an image
+  payload[\[60\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=For%20example%2C%20if%20an%20app,the%20following%20REST%20API%20call).
+  Now:
+  a.  Call `fileCreate` (GraphQL) with an `originalSource` URL to upload
+      the file (returns a file ID and
+      status)[\[61\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=mutation%20).
+  b.  Poll the file\'s `fileStatus` via a query until
+      ready[\[62\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=).
+  c.  Then use `productUpdate` (or `productCreate`) to associate that
+      file by its ID to a product (or
+      variant)[\[59\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=Anchor%20to%20ProductsProducts)[\[63\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=file%20).
+
+- This centralizes file storage and avoids duplicate files across
+  products[\[58\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=In%20early%202024%2C%20Shopify%20introduced,the%20process%20of%20updating%20files)[\[64\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=system%20uses%20a%20single%20file,the%20process%20of%20updating%20files).
+  It requires adjusting apps to use new file APIs and possibly
+  asynchronous flows (because file processing can be async).
+
+- The guide provides code examples for the above steps and also covers
+  handling **Collections** (which haven\'t fully moved to files yet;
+  images for collections still need direct linking via `src` in mutation
+  input)[\[65\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=When%20working%20with%20collections%2C%20the,files%20to%20collection%20mutations%20directly)[\[66\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=1,file%27s%20GID%20using%20fileCreate).
+
+- **New Product Model (2024-04 changes)**: Shopify significantly changed
+  the product and variant model in GraphQL Admin API to allow \>100
+  variants and \>3 options per product. The migration docs for the \"new
+  product model\" include:
+
+- **API Updates & Key Changes:** Starting API version `2024-04`,
+  `ProductInput.variants` and `ProductInput.options` fields in older
+  APIs are
+  deprecated[\[67\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=Shopify%20has%20updated%20the%20GraphQL,04%60%20releases)[\[68\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=Apps%20using%20the%20following%20deprecated,APIs%20in%20the%20following%20scenarios).
+  Instead, new dedicated mutations and inputs are introduced:
+  - New mutations for product options: `productOptionsCreate`,
+    `productOptionUpdate`, etc., and an `optionValues` field for
+    variants in bulk
+    operations[\[69\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=,43)[\[70\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=To%20manage%20option%20values%20with,in%20the%20GraphQL%20Admin%20API).
+  - A new `productSet` mutation to synchronize an entire product's data
+    (variants and options) in one go, primarily for apps syncing with
+    external
+    systems[\[71\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=Tip).
+  - Deprecation of REST `/products` and `/variants` endpoints by Feb/Apr
+    2025 deadlines (public/custom
+    apps)[\[72\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=GraphQL%20Admin%20API%20,01%20or%20earlier)[\[73\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=,by%20February%202025).
+  - Webhooks changes: Product update webhooks now include a list of all
+    variant IDs (`variant_ids`) in addition to first 100 variant
+    payloads[\[74\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=,field)[\[75\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=Anchor%20to%20Webhook%20updatesWebhook%20updates).
+
+- **Product Model and Components:** Explanation of conceptual changes:
+  - Variants are now considered a byproduct of *options* (options are
+    first-class). Shopify introduced APIs to manage options separately
+    from
+    variants[\[76\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=In%20the%20new%20product%20model%2C,push%20it%20back%20to%20Shopify)[\[77\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Anchor%20to%20First,class%20options%20and%20option%20values).
+  - E.g., instead of sending a full product with all variants to add a
+    new option, you can use `productOptionsCreate` to add an option
+    without touching existing
+    variants[\[78\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=align%20Shopify%20data%20with%20your,mutations%20described%20in%20this%20section).
+  - **Key differences**: GraphQL now supports partial updates (like
+    adding an option or updating one variant) without needing to send
+    the entire product data, which avoids the "clobbering" issue
+    (accidentally overwriting or deleting variants by omitting them)
+    that existed when using `ProductInput.variants` in one big
+    payload[\[79\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Some%20of%20our%20existing%20workflows%2C,were%20prone%20to%20data%20clobbering).
+  - The new approach reduces risk and improves performance, as you no
+    longer need to include unchanged variants in an update (resolving
+    the scenario where updating 50 variants out of 100 required sending
+    all 100 via REST or old
+    GraphQL)[\[80\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=For%20example%2C%20if%20Shopify%20is,was%20implicit%2C%20rather%20than%20explicit).
+  - **Workflows**: The docs describe two workflows:
+  - *Interactive UI workflow*: Use targeted mutations (`productUpdate`,
+    `productVariantsBulkCreate`, etc.) for incremental changes (fits
+    apps that let merchant edit bits of product
+    data)[\[76\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=In%20the%20new%20product%20model%2C,push%20it%20back%20to%20Shopify)[\[81\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=).
+  - *Database sync workflow*: Use `productSet` to push a full product
+    state (fits apps where Shopify is not the source of truth, e.g. ERP
+    sync)[\[82\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Note)[\[83\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Learn%20about%20some%20key%20differences,products%2C%20variants%2C%20and%20related%20resources).
+
+- **Migrate & Test with High Variants:** Guidance on testing your app on
+  a dev store with the new variant limits (2048 variants). It explains
+  creating a developer preview store with \"Extended Variants\" to
+  simulate lots of
+  variants[\[84\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=By%20default%2C%20stores%20have%20a,preview%20by%20following%20these%20steps)[\[85\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=4,name).
+  It also covers mapping REST IDs to GraphQL GIDs (as mentioned) and
+  highlights differences in endpoints/fields (like no direct `/variants`
+  REST calls, replaced by GraphQL
+  queries/mutations)[\[86\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=Anchor%20to%20Mapping%20Product%20and,IDs%20to%20Graph%20QL%20GIDs)[\[87\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=A%20key%20task%20will%20be,the%20corresponding%20GraphQL%20reference%20documentation).
+
+- **Retrieve/Add/Edit/Sync Data Guides:** Step-by-step tutorials for
+  using the new GraphQL APIs:
+  - *Retrieve product data*: how to query a product with many variants
+    using pagination and fragments (includes examples of fetching 300+
+    variants in batches of 250 using
+    cursors)[\[88\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=Retrieving%20a%20list%20of%20product,to%20retrieve%20the%20remaining%2050)[\[89\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=to%20retrieve%20250%20variants%20and,to%20retrieve%20the%20remaining%2050).
+    It demonstrates using GraphQL fragments for repeated field sets
+    (e.g., define a `ProductFields` fragment and reuse it in multiple
+    queries)[\[90\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=Anchor%20to%20Fragments%20example%3A%20Product,fieldsFragments%20example%3A%20Product%20fields)[\[91\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=fragment%20ProductFields%20on%20Product%20),
+    and how to loop through `hasNextPage` in code.
+  - *Add product data*: how to create a new product with multiple
+    options and multiple variants. Shows two methods: a single mutation
+    (`productCreate` with `productOptions` and `variants` input) versus
+    multiple calls (create product, then add options, then add
+    variants). It uses an example of a product with 2 options (`Color`
+    and `Size`, each with 3 values, making 9
+    variants)[\[92\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data#:~:text=You%20want%20to%20create%20a,product%20with%20the%20following%20data)[\[93\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data#:~:text=,option%20values).
+    The "Shape of product data" diagram clarifies how options, option
+    values, and variants
+    relate[\[94\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data#:~:text=The%20following%20diagram%20represents%20the,shape%20of%20the%20product%20data).
+    This guide includes example GraphQL for creating all variants in
+    bulk using `productVariantsBulkCreate` etc.
+  - *Edit product data*: how to perform complex edits on an existing
+    product, such as renaming options, reordering them, removing some
+    variants, adding new ones, etc., using the new APIs. For instance,
+    remove an entire option (like Size) from a product by deleting all
+    its variants or converting to single-option, add a new option
+    (Material) and related variants, etc. The tutorial sequences through
+    using bulk mutations and single mutations to achieve each change
+    (like `productOptionsDelete` to remove an option,
+    `productVariantsBulkDelete` for variants, etc.).
+  - *Sync product data*: how to use `productSet` for an external source
+    sync scenario. It demonstrates using `productSet` in asynchronous
+    mode (for large numbers of variants) vs synchronous (for up to 100
+    variants)[\[95\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=default%20is%20asynchronous)[\[96\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=The%20productSet%20mutation%20has%20an,100%20variants%20when%20run%20synchronously).
+    For example, how to create a product with variants via `productSet`
+    by providing a complete product definition in one API call (the
+    function runs asynchronously and returns a
+    status)[\[97\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=Anchor%20to%20Create%20a%20product,with%20variants%20and%20options%20asynchronously)[\[98\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=,Blue).
+    It also shows updating (synchronizing) an existing product by
+    sending updated state via `productSet` (with similar logic to
+    create).
+
+- **Metafield-linked Options**: A new concept where product options can
+  be linked to metafields (particularly metaobjects) to generate
+  variants automatically. The guide explains that if you have a
+  metafield (list of metaobject references) on Product, and it\'s
+  flagged as \"variants\" enabled, Shopify can treat each metaobject
+  entry as an option value that generates
+  variants[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces)[\[100\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=integrated%20within%20Shopify%20and%20numerous,marketplaces).
+  Criteria for this include: metafield owner type is Product, type is
+  list of metaobject_reference,
+  etc.[\[101\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=Anchor%20to%20Linking%20product%20options,metafieldsLinking%20product%20options%20to%20metafields).
+  Steps provided:
+  a.  Create metaobject entries for all values (via GraphQL
+      `metaobjectCreate`)[\[102\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=Anchor%20to%20Step%201%3A%20Create,metaobject%20entries%20for%20your%20attributes)[\[103\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=mutation%20MetaobjectCreate%28%24metaobject%3A%20MetaobjectCreateInput%21%29%20).
+  b.  Create a metafield definition on Product that is a list of
+      references to that metaobject type.
+  c.  Assign those metaobject entries to the product via that metafield.
+  d.  When creating the product (or via an update), use a special flag
+      or input so that each referenced metaobject becomes a variant
+      option. The result: variants are generated for each combination of
+      linked metafield values (this effectively allows dynamic option
+      sets).
+
+**Timeline:** Public apps must migrate from any deprecated APIs by
+February 2025, and custom apps by April 2025 for affected
+features[\[104\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=GraphQL%20Admin%20API%20,01%20or%20earlier).
+Key deprecations include REST products/variants endpoints and old
+GraphQL product variant fields.
+
+## App Extensions (Extending Shopify UI)
+
+### About App Extensions
+
+App extensions let your app embed functionality directly into Shopify's
+user interfaces (Admin, Checkout, POS,
+etc.)[\[105\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=An%20app%20extension%20surfaces%20the,quick%2C%20frequent%20actions%20from%20users).
+Instead of building a standalone UI and having merchants navigate to it,
+you can surface actions or content in context, where merchants or
+customers need them.
+
+For example, an app extension could add a dropdown menu item in the
+Shopify Admin orders page, a custom field in the checkout, or a new card
+in the POS
+interface[\[106\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=For%20example%2C%20your%20app%27s%20actions,POS).
+
+**Without vs With Extensions:** - *Without:* The merchant might have to
+open your app to perform actions, and your app communicates with Shopify
+via APIs, then displays results in your app
+UI[\[107\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Without%20an%20app,extensionWithout%20an%20app%20extension). -
+*With extensions:* The merchant can trigger your app's functionality
+directly in Shopify (e.g., clicking a button in the order screen), and
+Shopify passes relevant data to your extension, which displays UI within
+Shopify[\[108\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20With%20an%20app,extensionWith%20an%20app%20extension).
+This provides a more seamless experience and native look-and-feel.
+
+**What Extensions Are:** Technically, an extension is part of your app
+that is **deployed to Shopify's infrastructure** (for certain UI types)
+or defined in your app configuration. Many extension types, especially
+UI extensions, are built using Shopify\'s UI Extension SDKs and are
+hosted by Shopify once deployed. They often require a config file
+(`shopify.extension.toml`) and frontend code.
+
+**Considerations:** An app using extensions still follows normal app
+rules (it must be installed, have OAuth tokens, respect rate limits,
+etc.)[\[109\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Note).
+Extensions do not run arbitrarily -- they are invoked by Shopify in
+specific contexts (like rendering a product page in admin, or during
+checkout).
+
+### Types of App Extensions
+
+Shopify supports a wide variety of extension types. The **\"List of app
+extensions\"** documentation provides a table of all extension types,
+including: - **Admin extensions:** e.g. *Admin UI Extensions* (add
+custom cards or modals on admin
+pages)[\[110\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20adminAdmin%20actions%20No%20Shopify,Allow%20users%20to%20configure%20app),
+Admin link and bulk action extensions (now deprecated in favor of admin
+UI
+extensions)[\[111\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Domain%20Extension%20type%20Merchant%20experience,enabled). -
+**Checkout UI Extensions:** add elements in checkout (for Shopify Plus
+or certain
+plans)[\[112\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Checkout%20%2031No%20Shopify%20CLI,marketing%20campaign%20optimization%20and%20analytics). -
+**Discount combinations:** discount code function configuration UIs in
+admin[\[113\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=page%20in%20the%20Shopify%20admin,enabled%20application). -
+**Navigation links:** add links in the admin app nav (for your embedded
+app)[\[114\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Discount%20function%20settings%20No%20Shopify,navigation%20items%20consistently%20across%20devices). -
+**Purchase option extensions:** allow defining new purchase options
+(like subscription plans) in
+admin[\[115\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=discounts%20on%20the%20discount%20details,that%20allows%20users%20to%20see). -
+**Web Pixel Extension:** inject tracking scripts on storefront pages or
+order status
+page[\[116\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=the%20subscription%20details%20in%20your,increase%20sales%20by%20adding%20products)[\[117\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Web%20pixel%20No%20Shopify%20CLI,example%20workflow%20that%27s%20available%20in). -
+**Shopify Functions:** though not \"UI\", functions are listed as
+extensions of type \"function\" (with their own development
+flow)[\[118\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Checkout%20%2035blocks%20Shopify%20CLI,your%20app%20to%20Shopify%20Flow). -
+**Customer account extensions:** embed UI in new customer account
+pages[\[119\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Post,your%20app%20to%20Shopify%20Flow). -
+**Shopify Flow extensions:** triggers, actions, and templates that
+integrate with Shopify Flow
+automation[\[120\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Flow%20%2041actions%20Shopify%20CLI,copied%20into%20a%20merchant%27s%20store). -
+**POS UI Extensions:** add buttons, forms or information in the
+Point-of-Sale app
+interface[\[121\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Flow%20triggers%20triggers%20Shopify%20CLI,areas%20in%20the%20POS%20app). -
+**Theme app extensions:** (Online Store) add theme customizations via
+app blocks and sections, rather than directly injecting theme
+code[\[122\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Lifecycle%20Events%20No%20Partner%20Dashboard,CLI%20Allow%20customers%20to%20complete). -
+**Payment gateway extensions:** integrate a custom payment method at
+checkout (requires Shopify
+approval)[\[123\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=collect%20behavioral%20data%20for%20marketing,47No%20Shopify%20CLI%20Add%20custom).
+
+For each extension type, the docs list whether Shopify review is
+required, which tool to use for development (CLI or Partner Dashboard),
+and links to detailed
+docs[\[124\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20interface%20area%20App%20extension,to%20your%20app%20from%20any)[\[125\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Subscription%20link%20No%20Shopify%20CLI,such%20as%20checkout%20or%20cart).
+Notably: - Most UI extensions and Functions are built with **Shopify
+CLI** (using command `shopify app generate extension`). - A few older
+types like certain links are created in Partner Dashboard. - Only some
+extensions require Shopify's approval before you can distribute them
+(e.g. post-purchase UI, payments, certain Flow
+templates)[\[126\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20Functions%20No%20Shopify%20CLI,to%20Shopify%20Flow%20so%20that)[\[123\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=collect%20behavioral%20data%20for%20marketing,47No%20Shopify%20CLI%20Add%20custom).
+
+### Creating and Managing App Extensions
+
+**Development Workflow:** - Use **Shopify CLI** to scaffold and build
+extensions (for CLI-supported types). For example, to create an admin UI
+extension, you'd run `shopify app generate extension` and choose the
+type[\[127\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Create%20a%20new%20app%2C%20give,only%20app).
+This creates an `extensions/my-extension/` directory with a template. -
+Each extension has a config file `shopify.extension.toml` with metadata
+(name, type, etc.) and possibly settings like which pages it targets,
+capabilities (if it needs admin API access,
+etc.)[\[128\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Configuring%20app%20extensionsConfiguring,app%20extensions)[\[129\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=When%20you%20generate%20an%20app,in%20your%20app%27s%20extension%20directory). -
+Build your extension code (often with React-based SDKs for UI ext). -
+Test locally using `shopify app dev` which can push code to a draft
+extension for preview in Shopify.
+
+**Extension-only Apps:** You can create an app that consists solely of
+extensions (no embedded admin pages). Shopify can host such an app
+entirely, meaning you don\'t need your own web server for the app
+UI[\[130\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Extension)[\[131\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Extension,only%20apps%20on%20Shopify).
+These apps are installed via custom install links (since they have no
+OAuth redirect URL by
+default)[\[132\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Note).
+Extension-only apps *must* be distributed as custom apps (not via App
+Store)[\[133\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Note).
+The guide on "Build an extension-only app" shows: - How to create one
+(`shopify app init` and select
+\"extension-only\")[\[134\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20Create%20an%20extension,only%20app)[\[135\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=%24). -
+Lists which extension types are allowed in an extension-only app (e.g.,
+Admin UI extensions, Checkout UI, Functions, etc. -- basically UI and
+Function extensions that don\'t need an app
+backend)[\[136\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20App%20extensions%20that,only%20app)[\[118\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Checkout%20%2035blocks%20Shopify%20CLI,your%20app%20to%20Shopify%20Flow). -
+Notes that if later you need an embedded app UI, you can convert by
+adding an `application_url` to your app config (`shopify.app.toml`) to
+make it an embedded
+app[\[137\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20Converting%20to%20an,appConverting%20to%20an%20embedded%20app).
+
+**Configuring Extensions (TOML file):** When you generate an extension,
+the CLI creates a `shopify.extension.toml`. This contains sections
+like: - `extensions` (for UI extensions, can list multiple in one file
+if grouping). - Fields like `name`, `type`, `metafields` (if extension
+uses metafields), `capabilities` (like `network_access`,
+`block_progress`, etc. for checkout
+UI)[\[138\]\[139\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=). -
+`target` specifics: e.g., a checkout UI extension might target
+`purchase.checkout.block.render` (meaning it inserts a block in
+checkout)[\[140\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=network_access%20%3D%20true). -
+Each extension type may have custom config properties; the documentation
+lists common ones and extension-specific
+ones[\[141\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=,Differences%20in%20TOML%20file%20names)[\[142\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=Note)
+(for example, Flow triggers have different config fields than UI
+extensions). - The doc \"Configure app extensions\" provides a breakdown
+of **targets** (where in the UI the extension appears) and how to
+specify them in the
+TOML[\[143\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=Anchor%20to%20Extension%20typesExtension%20types)[\[144\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=),
+as well as differences in file naming for different extension types
+(some use `shopify.function.extension.toml` for Functions,
+etc.)[\[145\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=,Differences%20in%20TOML%20file%20names).
+
+**Versioning & Deployment:** All extensions in an app, plus the app
+config, are versioned together. When you run `shopify app deploy`, it
+creates a new app **version** and releases
+it[\[146\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Versioning%20and%20deploymentVersioning,and%20deployment).
+Merchants get the new extension behavior when the version is activated
+(slight delay might occur as Shopify rolls it
+out)[\[147\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=When%20you%20run%20the%20deploy,version%20from%20the%20Partner%20Dashboard).
+You can roll back by reverting to a previous version (via CLI or
+Partners
+dashboard)[\[146\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Versioning%20and%20deploymentVersioning,and%20deployment).
+This is useful: you can deploy updates to extensions without requiring
+merchants to reinstall; they just automatically use the latest released
+version.
+
+**Review and Approval:** Some extension types require Shopify to review
+them (particularly those affecting storefront or checkout, like
+Post-purchase extension, Payment methods, certain Flow templates). If an
+extension needs review: - You cannot release the version containing it
+until you submit for review and get
+approval[\[148\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Reviews%20and%20approvalsReviews,and%20approvals). -
+The \"List of app extensions\" and extension docs indicate which need
+review. For instance, post-purchase and payment extensions require
+review (marked \"Yes\" in the
+table)[\[126\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20Functions%20No%20Shopify%20CLI,to%20Shopify%20Flow%20so%20that)[\[123\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=collect%20behavioral%20data%20for%20marketing,47No%20Shopify%20CLI%20Add%20custom). -
+Submitting for review is done via the Partners dashboard. The docs
+advise checking the list to see if your extension needs it before
+planning
+release[\[149\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Some%20app%20extensions%20need%20to,before%20they%27re%20released%20to%20users).
+
+**Removing an Extension:** If you want to deprecate or temporarily
+disable an extension in your app: - **Dashboard-managed extension
+(created via Partner Dashboard):** go to your app in Partners, under
+**Extensions** section, delete the extension, then create and release a
+new app version without
+it[\[150\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=Anchor%20to%20Remove%20a%20dashboard,managed%20app%20extension)[\[151\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=4,page%2C%20click%20Delete).
+The extension stops showing to merchants once the new version is
+active[\[152\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=The%20active%20app%20version%20represents,be%20used%20in%20Shopify%20stores)[\[153\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=1,and%20message%20for%20the%20version). -
+**CLI-managed extension:** remove its code from your app (delete the
+folder or remove entry from `extension_directories` in
+`shopify.app.toml`) and then run `shopify app deploy` to release a new
+version[\[154\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=The%20contents%20of%20each%20app,managed%20extensions)[\[155\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=2,by%20running%20the%20following%20command).
+The CLI will list that the extension is removed in this version, and
+after releasing, it will be gone for
+merchants[\[156\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=%24). -
+If needed, you can roll back to restore an extension (if you removed it
+accidentally) by deploying a previous version, but remember to restore
+the code locally too for future
+deployments[\[157\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=Anchor%20to%20Restore%20a%20removed,extensionRestore%20a%20removed%20app%20extension).
+
+**Developer Tools:** The docs reference: - **Shopify CLI** -- primary
+tool to create, preview, and deploy
+extensions[\[158\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Creating%20app%20extensionsCreating,app%20extensions). -
+**Dev server** -- `shopify app dev` can live-reload extension changes
+(for some types) for preview. - **Partner Dashboard** -- to manage
+extensions (especially those created in dashboard) and to handle app
+versions (you can create versions and release in the UI as well). -
+**Shopify Dev Console / CLI Output** -- helpful for debugging extension
+build or deployment issues.
+
+**Next Steps:** After setting up extensions, the docs encourage learning
+how to **deploy** changes (e.g., using `shopify app deploy` or the
+Partner dashboard "Release"
+flow)[\[159\]\[160\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Next%20stepsNext%20steps),
+and consulting extension-specific guides for building out each
+extension's functionality (like going to the Checkout UI extension
+tutorial if building one).
+
+## Shopify Functions (Custom Backend Logic)
+
+### Introduction to Shopify Functions
+
+Shopify Functions enable developers to run custom backend code on
+Shopify's infrastructure in specific parts of the commerce flow
+(especially checkout). They are **serverless, event-driven functions**
+that Shopify invokes as needed (no direct HTTP endpoints). Key
+features: - They run *synchronously* within critical flows
+(cart/checkout processing) for things like discounts, shipping or
+payment customizations, validations, etc. - Written in languages that
+compile to WebAssembly (with provided libraries for Rust and
+JavaScript)[\[161\]](https://shopify.dev/docs/apps/build/functions#:~:text=,Rust%20%20and%20%2036). -
+Deployed as part of apps (distributed via app extensions of type
+"function").
+
+Functions let you extend Shopify's logic with guaranteed performance and
+security (since they run in a sandbox). For example, you can create: - A
+**discount function** to provide volume pricing or BOGO deals not
+supported by native discounts. - A **checkout validation** function to
+enforce business rules (e.g., limit 5 items of a certain category). - A
+**delivery customizations** function to hide or reorder shipping
+options. - A **payment customization** to hide/show payment options
+based on rules.
+
+**How Functions Work:** A function has: - **Input**: JSON data from
+Shopify (defined by a GraphQL *input query* you configure). For
+instance, for a discount function, input may include cart line items,
+buyer identity, etc. You can choose what data to include via the input
+GraphQL
+query[\[162\]](https://shopify.dev/docs/apps/build/functions#:~:text=,line%20product%20data%20or%20metafields). -
+**Function Logic**: Your code (Wasm module) receives the JSON input,
+processes it, and produces an output JSON. - **Output**: JSON that tells
+Shopify what to do (e.g., for a discount, output might be a list of
+discounts to apply; for validation, perhaps an error message or
+pass/fail
+result)[\[163\]](https://shopify.dev/docs/apps/build/functions#:~:text=specific%20data%20you%20need%20for,line%20product%20data%20or%20metafields)[\[164\]](https://shopify.dev/docs/apps/build/functions#:~:text=,like%20Shopify%20to%20carry%20out).
+
+Shopify defines specific **Function APIs** (for each use-case) that
+dictate the structure of input and output. These are versioned along
+with the Admin API. Example APIs: DiscountFunction API, CartTransform
+API, PaymentCustomization API, etc. Each has its own input schema and
+output schema, documented in Shopify\'s Function API reference.
+
+**Lifecycle:** 1. **Deploy** -- Developer creates an app with a function
+extension, writes code, and deploys it. 2. **Configure** -- Merchant
+installs the app and configures the function in Admin UI (for example,
+creates a Discount in Shopify Admin that uses the app's discount
+function; or configures a rule through your app\'s UI if needed). This
+often generates some config data saved via API (like a discount type, or
+metafields for function). 3. **Invoke** -- When a customer triggers the
+relevant action (adding to cart, checkout step, etc.), Shopify executes
+the function: - Gathers required data (GraphQL input query result). -
+Runs the function's WebAssembly code with that input. - Applies the
+function's output to modify the behavior (apply a discount, hide a
+payment method,
+etc.)[\[165\]](https://shopify.dev/docs/apps/build/functions#:~:text=The%20following%20diagram%20shows%20an,lifecycle%20of%20a%20Shopify%20Function)[\[166\]](https://shopify.dev/docs/apps/build/functions#:~:text=,made%20with%20the%20function%20configuration).
+
+**Note:** Functions are not callable via HTTP or triggers by the app
+directly -- they are triggered by Shopify in the defined commerce
+flow[\[167\]](https://shopify.dev/docs/apps/build/functions#:~:text=Shopify%20Functions%20are%20never%20invoked,needed%20within%20the%20customer%20journey).
+
+**Performance Consideration:** Functions run in critical paths, so they
+must be optimized. Shopify recommends writing in Rust for performance
+(especially for complex logic or large
+inputs)[\[161\]](https://shopify.dev/docs/apps/build/functions#:~:text=,Rust%20%20and%20%2036).
+There are execution time limits and resource limits (documented in the
+Function APIs reference). If a function is too slow or fails, Shopify
+may fallback (e.g., skip applying a discount) to not block checkout.
+
+### Creating Shopify Functions
+
+**Scaffolding:** Use **Shopify CLI** to generate a function extension.
+For example:
+
+    shopify app generate extension --template=discount_function
+
+This creates: - A `extension.toml` (or similar) config with function
+metadata (API, input query path, etc.). - A GraphQL schema file for the
+function's API (defines input type, etc.). - A sample input query (e.g.,
+`input.graphql`). - Starter code in Rust or JS (often default is Rust).
+
+**Input Queries:** Each function extension has an **input query**
+(GraphQL) that fetches data from Shopify to feed into the function. You
+can customize this query to include exactly what you need (e.g., product
+metafields, customer tags,
+etc.)[\[162\]](https://shopify.dev/docs/apps/build/functions#:~:text=,line%20product%20data%20or%20metafields).
+The input query runs in Shopify when the function triggers.
+
+- **Metafields in Input Queries:** You can include metafields (custom
+  data) in the function input. For example, if your function logic
+  depends on a product metafield (say \"maxQuantity\"), you add that
+  metafield to the input GraphQL query so it\'s available at
+  runtime[\[168\]](https://shopify.dev/docs/api/functions#:~:text=Shopify%20Functions%20allow%20developers%20to,following%20limitations%20apply%20to).
+- **Using Variables in Input Queries:** To make functions configurable
+  per merchant (or per configuration instance), you can use GraphQL
+  variables in input queries. Shopify allows linking those variables to
+  **metafields on the function owner** (like the Discount or shop).
+  E.g., a discount function might want a list of collection IDs to
+  exclude. Instead of hardcoding, you declare variables
+  `$excludedCollectionIds` in the query and then merchants can set those
+  via metafields when they configure the
+  discount[\[169\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=Function%20input%20queries%20can%20be,with%20arguments%20like%20%2028)[\[170\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=query%20Input%20).
+  The guide \"Use variables in input queries\" explains:
+- Add variables in the query definition and replace static IDs with
+  variable
+  usage[\[171\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=Anchor%20to%20Step%201%3A%20Specify,Specify%20variables%20for%20your%20query)[\[172\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=16).
+- In the function configuration, map those variables to a metafield
+  namespace/key that a merchant can edit in the Admin UI when setting up
+  the
+  function[\[173\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=,26)[\[174\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=Anchor%20to%20RequirementsRequirements).
+- This way, the function can be reused across shops or scenarios with
+  different values. It avoids needing to redeploy code just to change
+  IDs or thresholds.
+
+**Example:** Without variables, an input query might have
+`inAnyCollection(ids: ["gid://shopify/Collection/1", "gid://shopify/Collection/2"])`
+which is hardcoded to specific
+collections[\[175\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=product%20).
+With variables, it becomes:
+
+    query Input($excludedCollectionIds: [ID!]) {
+      cart {
+        lines {
+          merchandise {
+            ... on ProductVariant {
+              product {
+                inAnyCollection(ids: $excludedCollectionIds)
+
+and the merchant can supply their own collection IDs via a metafield
+instead of those hardcoded
+ones[\[176\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=15)[\[177\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=id).
+This makes the function flexible and multi-tenant.
+
+**Network Access in Functions:** Initially, functions could only use the
+data Shopify provided (no external calls). Shopify has introduced
+**Network Access** for functions (early access, primarily for Shopify
+Plus/enterprise). This allows a function to make an HTTP request (e.g.,
+to your app's backend or a 3rd-party API) during
+execution[\[178\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Network%20access%20for%20Shopify%20Functions,merchants%20on%20Shopify%20for%20enterprises): -
+It's done via a special `fetch` phase in the function. In the
+`shopify.extension.toml`, you specify a `target = "... .fetch"` for a
+function and provide details of the HTTP call (URL, headers, etc.) as
+part of the function code or
+config[\[179\]](https://shopify.dev/docs/api/functions#:~:text=Targets%20Fetch%20target%20,network%20HTTPS%20call%20External%20service)[\[180\]](https://shopify.dev/docs/api/functions#:~:text=The%20fetch%20target%20is%20limited,that%20Function%27s%20API%20reference%20page). -
+Shopify will perform that HTTP request when the function is run, then
+pass the result into the main function run as additional
+input[\[181\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Network%20access%20for%20Shopify%20Functions,input%20of%20the%20run%20target)[\[182\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=1.%20The%20,the%20existing%20function%20input%20query). -
+*Use cases:* e.g., validating membership via an external service,
+fetching live exchange rates for a pricing function, etc., that require
+data Shopify doesn't have internally. - **Availability:** Network calls
+are currently limited to certain function types (Cart/Checkout
+Validation, certain delivery option functions, Discounts) and only on
+Plus or Shopify for Enterprise plans using custom
+apps[\[183\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Anchor%20to%20Availability%20of%20network,of%20network%20access%20for%20functions).
+It also must be enabled by Shopify support for the specific shop (as of
+this
+writing)[\[184\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Discount%20FunctionsShopify%20for%20enterprises%20with,custom%20apps). -
+The docs outline **how it works** with a diagram of the sequence: 1.
+Function\'s fetch target yields an `HttpRequest` (with URL, etc.). 2.
+Shopify queues and executes the HTTP call (with caching possibly). 3.
+The HTTP response is fed into the function\'s input (the GraphQL input
+query can include fields to pick up the fetch
+response)[\[185\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Anchor%20to%20How%20it%20worksHow,it%20works)[\[186\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=2.%20The%20outcome%20of%20,to%20be%20executed).
+4. Function run target executes with that data. - **Restrictions:** Not
+all endpoints are allowed. E.g., you cannot call Shopify's own Ajax Cart
+API (since that could loop) and only certain GraphQL storefront queries
+with `@defer` are allowed in fetch
+stage[\[187\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=,the%20Storefront%20API%20%40defer%20directive).
+If a disallowed call is made, the function will receive a simulated 502
+response but still run (so you can handle
+it)[\[188\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=,API%20endpoints%20aren%27t%20supported). -
+**Performance and Resilience:** External calls introduce latency, so
+Shopify caches results when possible and has timeouts. The \"performance
+and resilience\" page advises using caching (Shopify caches fetch
+responses automatically for a short time within the same checkout) and
+handling timeouts or failures
+gracefully[\[186\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=2.%20The%20outcome%20of%20,to%20be%20executed)[\[189\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Read%20more%20about%20network%20request,caching%20in%20the%20Performance%20page).
+There\'s also a mention of a `@defer` directive requirement for
+storefront GraphQL in fetch (to keep response sizes
+manageable)[\[187\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=,the%20Storefront%20API%20%40defer%20directive).
+
+- To use network access, you must **request it to be enabled** for your
+  app/shop (currently), and add proper scopes if calling GraphQL
+  Storefront API.
+
+**Testing and Debugging Functions:** Shopify provides ways to test: -
+**CLI Unit Testing:** You can often simulate function input with test
+JSON files and run your WebAssembly module locally for debugging
+logic. - **Dev Mode:** `shopify app dev` allows you to test functions in
+a development store -- when you trigger checkout, it can use your dev
+function code (if flagged). - **Function Logs:** If a function crashes
+or returns errors, Shopify might surface logs in Partners dashboard or
+via the CLI `shopify functions serve` output. - The \"Test and debug
+Functions\" doc suggests strategies like using the CLI `--verbose` flag,
+writing logs (some function APIs support logging output visible in
+development).
+
+**Error Handling in Production:** Functions should handle unexpected
+input gracefully. In production, if a function fails (e.g., throws an
+exception or times out), Shopify will continue the checkout without that
+function's effect (fail-open in many cases). The docs \"Handling errors
+in production\" likely advise: - Validate input inside the function and
+use default outputs if needed. - Use the `userErrors` field in function
+output (some APIs allow returning an error message to display to
+merchant or in admin if config is wrong). - Monitor function execution
+metrics and error counts via Partner Dashboard or API Health.
+
+**Localization Practices for Functions:** Because functions might output
+text (e.g., error messages to customers for a validation function),
+those should be localized if supporting multiple languages. The
+\"Localization practices\" doc probably covers using translation files
+or keys in output.
+
+### Example: Discount Function Flow
+
+1.  **Build & Deploy:** Developer creates a \"DiscountFunction\"
+    extension. Writes Rust code that, say, gives 10% off if cart has \>5
+    items. Defines input query to get cart line quantities.
+2.  **Install & Configure:** Merchant installs app. In Shopify Admin
+    **Discounts**, they create a new discount of type \"Custom (from
+    app)\" -- select the app\'s function, and maybe set a threshold
+    (this threshold could be saved in a metafield on the function
+    configuration).
+3.  **Run:** A customer adds items to cart. During checkout, Shopify
+    runs:
+4.  Input query (cart lines, etc.) -\> JSON input.
+5.  Function logic (applies threshold from metafield variable) -\>
+    outputs discount adjustments if criteria met.
+6.  Shopify applies the discount to checkout if output is provided. If
+    the function errors or doesn't return output, checkout just proceeds
+    without discount.
+
+### Additional Notes:
+
+- **Function Versioning:** Functions are part of app versions. If you
+  update function code, you must deploy a new app version. Merchants
+  likely don\'t need to reconfigure unless your input/outputs changed in
+  incompatible ways (though significant changes might require them to
+  re-install or re-set the function).
+- **Resource Limits:** There are limits like input query complexity,
+  output size, execution time (usually a few milliseconds), and memory.
+  The Function API reference (resource limits section) details these to
+  ensure functions run
+  quickly[\[190\]\[191\]](https://shopify.dev/docs/api/functions#:~:text=,Other%20limitations).
+- **Supported APIs (2025)**: As of the latest versions, function APIs
+  exist for discounts, shipping customizations, payment customizations,
+  order routing, cart transforms, validations, etc. Some older Scripts
+  use-cases are replaced by these.
+
+## Webhooks
+
+### Overview of Webhooks
+
+Webhooks allow your app to receive real-time notifications when certain
+events happen in a Shopify store (e.g., order created, product updated).
+Instead of polling the API, Shopify sends an HTTP POST to your app's
+endpoint or a cloud function when the event occurs.
+
+**Creating/Subscribing to Webhooks:** You can subscribe to webhooks in
+two ways: - **In the Partners Dashboard** (manually configure webhook
+subscriptions for your app -- typically only for certain app types). -
+**Via API (preferred)**: Using the REST Admin API or GraphQL Admin API,
+you can register a webhook subscription programmatically. The docs
+\"Subscribe to webhooks\" detail this: - Using GraphQL
+`webhookSubscriptionCreate` mutation or REST endpoint to register a
+webhook subscription, specifying the topic and delivery method (URL or
+AWS EventBridge or
+Pub/Sub)[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL)[\[41\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Anchor%20to%20Getting%20startedGetting%20started). -
+You must have the relevant **access scopes** for the topics you
+subscribe to (e.g., to subscribe to orders/create, the app needs the
+`write_orders` or appropriate scope).
+
+**Delivery Methods:** Webhooks can be delivered via: - **HTTPS**:
+Shopify POSTs a JSON payload to your given URL. Your endpoint must
+respond with 200 OK quickly. - **Google Cloud Pub/Sub**: if configured,
+Shopify can publish messages to a Pub/Sub topic (useful for high-scale
+apps). - **Amazon EventBridge**: Shopify can send events to an AWS
+EventBridge bus for integration into workflows.
+
+The "Get started" guide shows how to set up a webhook subscription using
+Shopify's libraries or CLI, possibly with an example (like using Node
+(Remix) or Ruby on Rails
+code)[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL).
+
+### Configuring Webhooks
+
+**Selecting API Version:** Webhooks are tied to API versions. Shopify
+suggests subscribing to webhooks on the **latest stable version** your
+app supports. There\'s an option to have webhooks automatically migrate
+to newer API versions (by default, they use the API version at creation
+time, but \"use newer API version\" docs show how to opt in to automatic
+version upgrades for
+webhooks)[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL).
+
+**Filtering Webhooks:** Some webhook topics support filters, so you
+receive fewer, more specific events. For example, you can filter
+`orders/updated` to only get updates when a certain field changes, or
+filter `products/update` for specific product IDs or
+statuses[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL).
+The \"Customize webhooks with filters\" doc covers adding filters in the
+subscription creation (GraphQL mutation supports a `filter` field) to
+refine when the webhook triggers.
+
+**Webhook Payloads:** The webhook POST contains a JSON body with the
+resource data (structure depends on topic and API version) and
+headers: - `X-Shopify-Topic`: the event topic (e.g., `orders/create`). -
+`X-Shopify-Hmac-Sha256`: a hash of the payload using your app's secret
+for verification (to ensure it's from Shopify). -
+`X-Shopify-Shop-Domain`: the store's myshopify domain. - etc.
+
+Your app should verify the HMAC and parse the JSON.
+
+**Best Practices:** - Respond within 5 seconds with a 200 status. If
+not, Shopify assumes failure and will retry (with exponential backoff) a
+few
+times[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL). -
+**Idempotency:** Webhooks can be delivered more than once or out of
+order, so handle duplicates (e.g., by tracking IDs). The guide "Ignore
+duplicate webhooks" suggests using the `X-Shopify-Webhook-Id` header to
+deduplicate
+events[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL). -
+**Retry logic:** Shopify retries 19 times over \~48 hours for failing
+webhooks[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL).
+If your endpoint is down temporarily, you can still receive the webhook
+later. - Don't do heavy processing in the webhook handler -- queue the
+work if possible and quickly respond 200.
+
+**Securing Webhooks:** - Always verify the HMAC signature using your
+app's shared secret and the request body (the doc includes sample code
+to compute and compare the HMAC). This ensures the request is from
+Shopify and not
+tampered[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL). -
+Use HTTPS endpoints with valid SSL.
+
+**Specific Topics & API Changes:** Shopify continuously adds webhook
+topics for new features (e.g., new product model might have different or
+additional webhooks). The \"List of webhook topics\" in docs enumerates
+all available topics (orders/create, orders/updated, products/create,
+app/uninstalled, etc., including those for GDPR like customers/redact).
+Standard definitions exist in documentation.
+
+**Optional Features:** Some special webhooks: - *Orders/delete* has no
+payload (just an empty object with the ID in header). -
+*App/uninstalled* -- your app should listen to clean up data when a
+store uninstalls. - *Shop/redact, Customers/data_request,
+Customers/redact* -- GDPR webhooks for data deletion requests, required
+for public apps.
+
+**Webhook API Version Upgrade:** The doc \"use newer API version\"
+likely instructs how to set your webhooks to auto-upgrade to the latest
+version without manually re-registering (GraphQL has a flag
+`includeSubscriptionInPartnerDashboard` or so).
+
+### Handling and Testing Webhooks
+
+To test webhooks during development: - Use a tool like **ngrok** to
+expose your local dev server to the internet and register your ngrok URL
+for webhooks. - Shopify CLI may have a feature to listen for webhooks
+(`shopify webhook trigger` can simulate sending a webhook to your app,
+and `shopify webhook receive` can print incoming ones).
+
+**Duplicate Webhooks:** As mentioned, sometimes duplicate events happen
+(or you might subscribe to overlapping topics). The \"Ignore
+duplicates\" guide suggests using the webhook ID header as a key. If you
+receive the same webhook ID twice, ignore the
+second[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL).
+
+**Webhook Client Libraries:** Shopify offers libraries (e.g., in Node
+koa-shopify-webhooks or in Ruby shopify_app gem) that handle verifying
+and responding to webhooks easily. They can auto-register webhooks on
+app install and provide middleware to parse and verify.
+
+### Webhook Flow Summary
+
+- **Subscribe** (once, usually at app install or first run).
+- **Shopify triggers event**, enqueues webhook delivery.
+- **Delivery**: Shopify POSTs to your endpoint.
+- **Your app responds 200** quickly (within 5s).
+- **Processing**: You carry out whatever action needed (update your DB,
+  send an email, etc.).
+- **Retries** if no 200 response: progressively larger intervals (first
+  retry \~5 seconds later, eventually up to hours).
+
+**Troubleshooting Webhooks:** If webhooks aren\'t arriving: - Check the
+app\'s webhook subscription via API or Partners (maybe it wasn't
+saved). - Verify the URL is correct and reachable (firewall issues). -
+Look at the response logs in Partner Dashboard: it shows recent
+deliveries (with HTTP status and body of response). - Ensure your site's
+SSL and DNS are correct (Shopify won't send to plain HTTP). - If using
+Pub/Sub or EventBridge, ensure proper setup and permissions.
+
+## Custom Data: Metafields and Metaobjects
+
+Shopify allows apps and merchants to store **custom data** for resources
+using Metafields and to define custom data types via Metaobjects. These
+are powerful for apps to extend Shopify\'s data model.
+
+### Metafields
+
+**What are Metafields?** Key-value pairs attached to Shopify resources
+(Product, Variant, Order, Customer, Shop, etc.). Each metafield has: -
+**namespace** (grouping key) - **key** (identifier within namespace) -
+**value** and **type** (the data, which could be text, integer, JSON,
+reference, etc.)
+
+They allow storing custom attributes, e.g., a product might have a
+metafield namespace `myapp` and key `fabric` with value \"Cotton\".
+
+**Defining Metafields (Metafield Definitions):** Shopify introduced
+*metafield definitions* to have typed, reusable metafields: - You (or a
+merchant) create a definition in admin or via API specifying name,
+namespace, key, type (e.g., `fabric` of type single line text, for
+Products)[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces). -
+Definitions can be **standard** (pre-defined by Shopify for common
+things) or **custom**. Standard definitions for common concepts (like
+\"Manufacturer\", \"ISBN\" for products) are
+provided[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces). -
+Once a definition exists, users can fill values on that resource in
+Admin UI or apps can via API.
+
+**Metafield Types and Validation:** There are various data types:
+integer, boolean, string (single or multi-line), HTML, JSON, reference
+types (to a product, file, etc.), lists of values, etc. **Validation
+options** can include limits like min/max for numbers, allowed file
+types for file references, regex for strings, etc., set in the
+definition[\[101\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=Anchor%20to%20Linking%20product%20options,metafieldsLinking%20product%20options%20to%20metafields).
+
+The \"list of data types\" and \"validation options\" documentation
+enumerates these types (e.g., `single_line_text_field`,
+`number_integer`, `json`, `product_reference`,
+etc.)[\[192\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=).
+
+**Access Controls:** Metafields have *owner* (the resource they attach
+to) and can be **merchant editable** (via admin UI) or **app private**
+(only via API). The docs on \"permissions and ownership\" clarify: - If
+an app creates a metafield without a definition (legacy \"private
+metafield\"), only that app can read it unless it's made public via a
+definition. - Custom apps can create their own definitions that are
+hidden or visible to merchants depending on settings.
+
+**Using Metafields in Apps:** - **Create/Update**: Use GraphQL mutations
+like `metafieldsSet` (which can set multiple metafields at once on a
+resource) or REST endpoints (`PUT /products/{id}/metafields.json`). -
+**Retrieve**: You can query metafields via GraphQL (e.g.,
+`product(id: ...){ metafields(first:10){ edges{ node { namespace key value } } } }`)
+or REST (`GET /products/{id}/metafields.json`). - **Filtering by
+Metafield**: The Admin GraphQL API supports querying a resource by
+metafield values (e.g., search products where a metafield equals
+something)[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces).
+The guide \"Query by metafield value\" shows how to use the `query`
+argument on connections with metafield criteria.
+
+**Metafield Limits:** There are some limits: - Each resource type has a
+maximum number of metafields (e.g., a product might have 250 metafields
+max, shop might have 100,
+etc.)[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces). -
+Value size limits (e.g., max length for text, or max size for JSON). -
+Keys/namespaces length and character limits.
+
+**Private vs Public Metafields Migration:** Earlier, apps had \"private
+metafields\" (namespaced keys without a definition, only accessible via
+that app's token). Now, best practice is to create definitions so
+merchants can see/edit them if appropriate. There's a guide \"migrate
+private metafields to definitions\" if
+needed[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces).
+
+**Conditional Metafields:** Shopify also supports *conditional
+definitions* -- a metafield definition can be scoped to only certain
+products (like only apply to products of a certain product type). This
+is advanced usage for admin UI (e.g., only show "Fabric" metafield for
+products of type Clothing).
+
+### Metaobjects
+
+**What are Metaobjects?** Think of them as custom data models or content
+types that are not tied to a single resource. A metaobject definition
+defines a custom entity with various fields. Merchants or apps can then
+create instances (entries) of that metaobject and reference them from
+other parts of Shopify.
+
+For example, a \"Size Chart\" metaobject could be defined with fields
+like title, image, measurements table (maybe JSON or rich text). Then
+merchants create multiple size chart entries. These entries can then be
+linked to products via a metafield reference or used in custom
+storefront rendering.
+
+**Metaobject Components:** - **Definition**: defines the fields (each
+field has a name, type, and whether it's required or
+list)[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces). -
+**Entries**: the data records. Each entry has an autogenerated ID and
+the fields as per definition. - **References**: You can reference a
+metaobject entry from a metafield of type metaobject reference (list or
+single). This is how products, etc., tie to a metaobject.
+
+Shopify has **Standard metaobject definitions** for common use-cases
+(e.g., a \"Review\" metaobject with rating, author,
+etc.)[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces),
+and you can create custom ones.
+
+**Example:** The standard \"Review\" metaobject might have fields:
+rating (integer), title (string), body (text), reviewer_name (string). A
+product could have a metafield that is a list of Review metaobject
+references, effectively linking reviews to the
+product[\[193\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=By%20using%20metaobjects%20to%20model,variants%20for%20each%20attribute%20value).
+
+**Limits:** - There are limits on how many metaobject entries you can
+have per definition and overall (e.g., maybe 200 entries per definition
+on some plans). - Also field count and size limits.
+
+**Accessing Metaobjects via API:** - GraphQL: use `metaobjectCreate`,
+`metaobjectUpdate`, etc., to manage
+entries[\[102\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=Anchor%20to%20Step%201%3A%20Create,metaobject%20entries%20for%20your%20attributes).
+Query metaobject entries by ID or type. - Admin UI: After definition is
+made, merchants can create entries in the **Content** section of their
+admin (if it's a merchant-facing definition).
+
+**Metaobjects and the New Product Model:** They tie in with
+metafield-linked options (as described earlier) and with any scenario
+requiring complex data structures (like a \"FAQ\" metaobject that stores
+Q&A that you link on a product page, etc.).
+
+### Custom Data Use Cases
+
+- **Metafield use case**: storing a product\'s extra info like part
+  number, ingredients, dimensions, which can be displayed on the
+  storefront or used in logic.
+- **Metaobject use case**: creating a re-usable block of data such as a
+  blog author profile that can be referenced by blog posts via
+  metafield, or store policies as objects.
+
+**Permissions:** Apps need proper scopes to manage metafields
+(`write_products` for product metafields, etc., or the more granular
+`write_product_listings` if applicable). A new scope `write_metaobjects`
+covers metaobject entries.
+
+**Working with IDs:** Metafields have IDs too, but usually you address
+them by namespace/key on a resource. Metaobject entries have a global ID
+(gid://shopify/Metaobject/{id}).
+
+## Authentication and Authorization (OAuth & Tokens) {#authentication-and-authorization-oauth-tokens}
+
+Shopify apps use OAuth for installation and API access. Key points:
+
+### App Installation (OAuth Flow)
+
+- Apps must be **installed** by the merchant via an OAuth 2.0
+  authorization flow. The app provides a install link (with client_id,
+  scopes, redirect_uri).
+- Merchant sees the permission screen listing requested scopes, and if
+  they accept, Shopify redirects to your app with a `code` and `shop`
+  parameter[\[37\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Legacy).
+- Your app then exchanges that code for a permanent **access token** via
+  the OAuth token endpoint
+  (`/admin/oauth/access_token`)[\[194\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=The%20REST%20Admin%20API%20is,to%20the%20GraphQL%20Admin%20API).
+
+There are two types of tokens: - **Offline Access Token** (default):
+does not expire, used for background tasks, webhooks, etc. One per shop
+per app. - **Online Access Token**: associated with a specific
+session/user, expires (and can be refreshed in some contexts). Used for
+per-user data and to comply with GDPR (ex: identifying the specific user
+who made API calls in
+logs)[\[195\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=The%20REST%20Admin%20API%20is,to%20the%20GraphQL%20Admin%20API).
+
+Shopify returns an offline token if `grant_options[]=per-user` is NOT
+used; if it is used, Shopify returns an online token tied to that user.
+
+### Access Scopes
+
+**Scopes** define what data the token can access (e.g., `read_products`,
+`write_orders`, etc.). You must specify scopes on the install link. The
+\"Manage access scopes\" doc notes: - You cannot request more scopes
+without a new install (or asking merchant to approve additional scopes
+through an OAuth re-prompt). - You can request fewer scopes (i.e., drop
+some) without reapproval. - Apps should only request scopes they need
+and justify them to merchants.
+
+**Scope APIs:** After installation, you can use GraphQL or REST to check
+what scopes your token has (the `oauth/access_scopes.json` or GraphQL
+`appInstallation.accessScopes` field).
+
+### Session Tokens (Embedded Apps)
+
+If your app is an **embedded app** (running inside Shopify Admin as an
+iframe), you should use **Session Tokens** for authentication within the
+iframe instead of relying on cookies. Session tokens are JWTs that
+Shopify Admin generates and your app can verify using your app
+secret[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy).
+The workflow: - Your front-end (in iframe) requests a token via Shopify
+App Bridge or JS library. - Shopify injects a JWT containing shop and
+user info, signed with your secret. - You verify this JWT in your
+backend on each request. This avoids needing to maintain a separate
+session or do a full OAuth on each iframe load. The guide \"Set up
+session tokens\" provides steps to implement this in your chosen
+stack[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy).
+This is especially important because modern browsers block third-party
+cookies, so embedded apps cannot rely on cookies for session.
+
+### Admin API Access Tokens
+
+After OAuth, you get an **Admin API access token** for the shop. Use
+this token in API calls (as header `X-Shopify-Access-Token` for REST, or
+as bearer token for GraphQL). This token is **confidential** and should
+be stored securely. If exposed, someone could access that shop's data.
+You should also handle token redaction: when an app is uninstalled,
+Shopify will send an **uninstall webhook**; your app should delete the
+token then.
+
+### Online vs Offline Tokens:
+
+- **Offline token**: one per shop, no expiration. Good for background
+  processes (webhooks, periodic jobs).
+- **Online token**: tied to a specific Shopify user (staff) and has a
+  shorter lifespan (usually valid for the session \~24h). Useful if you
+  need to act on behalf of a user or check their permissions. Some APIs
+  (like certain customer data, if I recall) might require online token
+  if they tie to GDPR data access rules.
+
+To get an online token, the OAuth request includes
+`grant_options[]=per-user`. The response will then include extra fields
+for the associated user and an expiry time for the
+token[\[195\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=The%20REST%20Admin%20API%20is,to%20the%20GraphQL%20Admin%20API).
+
+### Token Lifecycles and Refresh:
+
+In older implementations, online tokens could be refreshed with a
+refresh token. But as of 2021+, Shopify online tokens are short-lived
+JWTs (if using session tokens, they are continuously refreshed by App
+Bridge). The OAuth access token (offline) doesn't expire but is revoked
+on uninstall.
+
+**Re-authentication:** If your app needs additional scopes later, you
+must send the merchant through OAuth again with those scopes (the
+merchant will see an update prompt). This is covered under \"granting
+additional scopes\" in docs.
+
+### Client Secrets and HMAC:
+
+Your app has a **API Key** (public) and **API Secret** (private). - The
+secret is used to sign OAuth exchanges and verify webhooks and proxy
+requests. - You should **never expose the secret** in front-end code. -
+If you suspect a secret is compromised, you can rotate it in the
+Partners dashboard. The docs \"Rotate or revoke client credentials\"
+guide how to change API secret or API
+key[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy).
+
+### Embedded App Authorization:
+
+For embedded apps, after OAuth, you redirect to Shopify Admin with the
+app installed. If using session tokens, each request inside the admin
+will carry a token, so you typically don\'t need to implement a
+server-side session login.
+
+The doc \"Set embedded app authorization\" likely describes adding
+security headers or CSP to ensure the app only frames in admin and uses
+session tokens correctly.
+
+### Uninstallation:
+
+When a merchant uninstalls the app, your access token becomes invalid.
+You receive a webhook `app/uninstalled`. On receiving it, your app
+should: - Delete any stored data for that shop (personal data per
+Shopify's terms). - Clean up any scheduled tasks or subscriptions
+(webhooks, script tags, etc., if applicable). - Ensure to stop making
+API calls for that shop.
+
+The \"uninstall-app API request\" might refer to how the app itself can
+detect or simulate uninstall (or the webhook event payload structure).
+
+### Delegate Access (Multipass / Session Tokens for POS, etc.): {#delegate-access-multipass-session-tokens-for-pos-etc.}
+
+There is mention of **Delegate tokens**: these allow an app to act on
+behalf of a merchant in different contexts, possibly used for POS or
+mobile where the app might not be embedded. The \"use delegate tokens\"
+doc likely covers how an app (like a POS embedded app) can obtain a
+special token to call Admin API as if the merchant user themselves (with
+their permissions).
+
+## Marketing & Analytics (Pixels, Customer Segments, Marketing Activities, Automations) {#marketing-analytics-pixels-customer-segments-marketing-activities-automations}
+
+Shopify provides extension points and APIs for marketing-related
+functionality:
+
+### Pixels (Marketing and Analytics)
+
+**Pixels** are scripts that run on storefront (or other surfaces) to
+track user behavior (for analytics, retargeting, etc.). The Pixel API
+allows developers to create **Web Pixels** that merchants can install to
+send data to marketing platforms.
+
+- Web Pixel extension can be created by apps to insert tracking code on
+  the **Order Status Page** or other pages. It\'s JavaScript that can
+  listen to events like page view, product view, add to cart, etc., and
+  forward to external analytics.
+- Pixel scripts run in a sandbox with certain Shopify-provided data
+  (customer ID (if present), order ID on thank you page, etc.) but with
+  privacy constraints (respecting user consent through the Shopify
+  Customer Privacy API).
+- The \"build web pixels\" doc shows how to use the Pixel DSL or Pixel
+  Extension point to capture events. Pixel code must be asynchronous and
+  efficient.
+
+**Pixel Development:** - Created via the Marketing & Analytics section
+in docs (similar to an extension, possibly configured in Partner
+Dashboard). - Must be approved by Shopify if public (since they can
+affect storefront performance and privacy). - The Pixel Manager in
+Shopify Admin allows merchants to enable/disable installed pixels.
+
+### Customer Segments
+
+Shopify introduced **Customer Segments** -- a way to filter customers
+into groups based on conditions (like saved searches but more powerful).
+Apps can integrate: - **Customer Segment Template Extension:** Apps can
+provide pre-built segment definitions (with a template language or
+preset conditions) for merchants to
+use[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy). -
+**Customer Segment Action Extension:** Apps can act on a segment --
+e.g., an app that sends emails could provide an action "Send discount to
+this segment" that appears in the Shopify UI for a
+segment[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy).
+
+The guides include: - *Build a template extension*: how to define a
+custom segmentation rule template. - *Build an action extension*: how to
+define an action that can be triggered for a segment (e.g., feed segment
+data to an app's API).
+
+**Migrating Saved Searches to Segments:** Shopify used to have \"saved
+customer searches\". These are replaced by segments. There\'s guidance
+on migrating any logic that used saved searches to the new segments
+GraphQL API (which supports asynchronous querying if segments are
+large).
+
+**Async Customer Query API:** Customer segments can potentially be
+large. There's an asynchronous query API (GraphQL
+`customerSegmentsQuery`) to get segment members, which returns a job ID
+to download results when
+ready[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy).
+The \"migrate to async queries\" doc instructs apps to use this instead
+of trying to sync load thousands of customers.
+
+### Marketing Activities
+
+Marketing Activities are Shopify's way of representing marketing
+campaigns (like a Facebook Ad campaign or a Google Shopping feed) within
+Shopify. Apps that create or manage marketing can integrate via
+Marketing Activity extensions: - If an app runs ads, it can create
+Marketing Activities in Shopify so merchants see them on their Marketing
+page. - The \"marketing-activities\" doc likely covers how to define the
+extension, and how to update the status of an activity (e.g., show
+impressions, clicks, etc. via API).
+
+**Migrating legacy marketing events**: If older apps used Marketing APIs
+or extensions, the \"migrate extensions\" doc covers updating to newer
+specs.
+
+### Automations
+
+Shopify Automations (Shopify Flow, etc.) allow automating tasks. Apps
+can: - Provide **Flow Actions**: e.g., an app could add a Flow action
+"Send SMS via MyApp" which merchants can use in Flow
+workflows[\[197\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Flow%20%2041actions%20Shopify%20CLI,copied%20into%20a%20merchant%27s%20store). -
+Provide **Flow Triggers**: e.g., an app can expose a trigger event like
+"MyApp received an SMS reply" to start flows. - Provide **Flow
+Conditions** inside flows or **Flow Templates** that include the app\'s
+actions/triggers in pre-made workflows.
+
+In the docs: - *create marketing automation actions*: Possibly about
+Flow actions specifically for Marketing section or new Automations UI. -
+*action endpoints*: how to build the endpoint in your app that Flow will
+call to perform the action (Flow sends a POST to your app with workflow
+context and your app does something, then optionally returns output).
+
+### In summary:
+
+The Marketing & Analytics section guides developers to integrate with
+Shopify's native marketing and automation features, ensuring their
+app\'s capabilities surface in the Shopify UI: - Use **Pixels** for
+client-side analytics integration. - Use **Customer Segments
+extensions** to enhance segmentation capabilities. - Use **Marketing
+Activity extensions** to list campaigns and their performance in
+Shopify. - Use **Automations (Flow) extensions** to allow merchants to
+include your app in automated workflows (triggers/actions).
+
+Each integration typically requires following specific extension
+registration (often via GraphQL mutations to register the extension or
+by including in app\'s extension config) and often some review by
+Shopify (especially for Pixel).
+
+**Sources:** - Shopify GraphQL Admin API -- Developer
+Documentation[\[1\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Unlike%20REST%20APIs%2C%20which%20have,responds%20with%20only%20that%20data)[\[2\]](https://shopify.dev/docs/apps/build/graphql#:~:text=GraphQL%20REST)[\[4\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Shopify%20knows%20what%20data%20an,app%20is%20using) -
+Shopify GraphQL Queries
+Guide[\[198\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=GraphQL%20queries%20retrieve%20data%20from,HTTP%20method)[\[199\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=Anchor%20to%20ConnectionsConnections) -
+Shopify GraphQL Mutations
+Guide[\[200\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=GraphQL%20mutations%20create%20and%20modify,HTTP%20method)[\[201\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=Anchor%20to%20Return%20fieldsReturn%20fields) -
+Shopify GraphQL Variables
+Guide[\[202\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=You%20can%20simplify%20GraphQL%20queries,same%20requests%20with%20different%20arguments)[\[31\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=) -
+Advanced GraphQL Concepts (Inline Fragments &
+Multi-query)[\[33\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=Inline%20fragments%20enhance%20query%20flexibility,TYPE%3E%60%20syntax)[\[27\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=You%20can%20submit%20multiple%20queries,multiple%20times%20with%20different%20arguments) -
+REST to GraphQL Migration
+Guide[\[45\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Many%20REST%20Admin%20API%20resources,query%20or%20mutation%20in%20GraphQL)[\[46\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Retrieving%20information%20about%20a%20single,similar%20in%20REST%20and%20GraphQL) -
+Update API calls (GraphQL vs REST
+examples)[\[203\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20client%20type)[\[56\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Add%20a%20query) -
+New Files Model
+Migration[\[59\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=Anchor%20to%20ProductsProducts)[\[60\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=For%20example%2C%20if%20an%20app,the%20following%20REST%20API%20call) -
+New Product Model Migration (API
+Updates)[\[104\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=GraphQL%20Admin%20API%20,01%20or%20earlier)[\[75\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=Anchor%20to%20Webhook%20updatesWebhook%20updates) -
+Product Model -- Components &
+Workflows[\[76\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=In%20the%20new%20product%20model%2C,push%20it%20back%20to%20Shopify)[\[80\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=For%20example%2C%20if%20Shopify%20is,was%20implicit%2C%20rather%20than%20explicit) -
+GraphQL Admin API Webhooks
+Guide[\[204\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=,admin_graphql_api_id%3A%20ID)[\[205\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=) -
+App Extensions
+Overview[\[105\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=An%20app%20extension%20surfaces%20the,quick%2C%20frequent%20actions%20from%20users)[\[108\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20With%20an%20app,extensionWith%20an%20app%20extension) -
+Build Extension-only
+App[\[136\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20App%20extensions%20that,only%20app)[\[137\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20Converting%20to%20an,appConverting%20to%20an%20embedded%20app) -
+List of App
+Extensions[\[206\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Description%20Shopify%20adminAdmin%20actions%20No,page%20in%20the%20Shopify%20admin)[\[116\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=the%20subscription%20details%20in%20your,increase%20sales%20by%20adding%20products) -
+Configure App Extensions
+(TOML)[\[142\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=Note)[\[140\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=network_access%20%3D%20true) -
+Remove App
+Extension[\[207\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=Anchor%20to%20Remove%20a%20dashboard,managed%20app%20extension)[\[154\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=The%20contents%20of%20each%20app,managed%20extensions) -
+Shopify Functions
+Intro[\[208\]](https://shopify.dev/docs/apps/build/functions#:~:text=specific%20data%20you%20need%20for,line%20product%20data%20or%20metafields)[\[164\]](https://shopify.dev/docs/apps/build/functions#:~:text=,like%20Shopify%20to%20carry%20out) -
+Functions Input Query
+Variables[\[170\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=query%20Input%20)[\[176\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=15) -
+Functions Network
+Access[\[185\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Anchor%20to%20How%20it%20worksHow,it%20works)[\[187\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=,the%20Storefront%20API%20%40defer%20directive) -
+Shopify Webhooks Best
+Practices[\[209\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=JSON%20response)[\[210\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=18)
+
+[\[1\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Unlike%20REST%20APIs%2C%20which%20have,responds%20with%20only%20that%20data)
+[\[2\]](https://shopify.dev/docs/apps/build/graphql#:~:text=GraphQL%20REST)
+[\[3\]](https://shopify.dev/docs/apps/build/graphql#:~:text=For%20example%2C%20in%20the%20case,the%20product%20in%20the%20order)
+[\[4\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Shopify%20knows%20what%20data%20an,app%20is%20using)
+[\[5\]](https://shopify.dev/docs/apps/build/graphql#:~:text=Documentation%20is%20a%20first)
+[\[6\]](https://shopify.dev/docs/apps/build/graphql#:~:text=query%20)
+[\[7\]](https://shopify.dev/docs/apps/build/graphql#:~:text=)
+[\[8\]](https://shopify.dev/docs/apps/build/graphql#:~:text=) About
+GraphQL
+
+<https://shopify.dev/docs/apps/build/graphql>
+
+[\[9\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=Anchor%20to%20QueryRootQuery%20Root)
+[\[10\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=Note)
+[\[11\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=and%20use%20the%20,method)
+[\[12\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=A%20GraphQL%20API%20models%20data,that%20you%20want%20to%20retrieve)
+[\[13\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=query%20)
+[\[14\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=)
+[\[15\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=When%20you%20select%20a%20connection%2C,limiting%20%20and%20%2037)
+[\[16\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=,...%20%7D)
+[\[17\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=all%20the%20data%20that%27s%20available)
+[\[18\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=query%20)
+[\[19\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=query%20)
+[\[20\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=)
+[\[51\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=You%20can%20filter%20connections%20with,that%20match%20a%20search%20query)
+[\[198\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=GraphQL%20queries%20retrieve%20data%20from,HTTP%20method)
+[\[199\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=Anchor%20to%20ConnectionsConnections)
+[\[209\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=JSON%20response)
+[\[210\]](https://shopify.dev/docs/apps/build/graphql/basics/queries#:~:text=18)
+GraphQL queries
+
+<https://shopify.dev/docs/apps/build/graphql/basics/queries>
+
+[\[21\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=,These%20are%20the%20pieces)
+[\[22\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=customer%20)
+[\[23\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=For%20example%2C%20the%20customerCreate%20,create%20or%20modify%20a%20customer)
+[\[24\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=want%20to%20include%20in%20the,response)
+[\[25\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=)
+[\[26\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=want%20to%20include%20in%20the,response)
+[\[200\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=GraphQL%20mutations%20create%20and%20modify,HTTP%20method)
+[\[201\]](https://shopify.dev/docs/apps/build/graphql/basics/mutations#:~:text=Anchor%20to%20Return%20fieldsReturn%20fields)
+GraphQL mutations
+
+<https://shopify.dev/docs/apps/build/graphql/basics/mutations>
+
+[\[27\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=You%20can%20submit%20multiple%20queries,multiple%20times%20with%20different%20arguments)
+[\[33\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=Inline%20fragments%20enhance%20query%20flexibility,TYPE%3E%60%20syntax)
+[\[34\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=Note)
+[\[35\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=mutation%20)
+[\[36\]](https://shopify.dev/docs/apps/build/graphql/basics/advanced#:~:text=VipDiamond%3A%20customerUpdate)
+Advanced concepts
+
+<https://shopify.dev/docs/apps/build/graphql/basics/advanced>
+
+[\[28\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=Anchor%20to%20Query%20sectionQuery%20section)
+[\[29\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=In%20the%20variable%20section%2C%20variables,defined%20as%20a%20JSON%20object)
+[\[30\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=You%20can%20simplify%20GraphQL%20queries,same%20requests%20with%20different%20arguments)
+[\[31\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=)
+[\[32\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=)
+[\[202\]](https://shopify.dev/docs/apps/build/graphql/basics/variables#:~:text=You%20can%20simplify%20GraphQL%20queries,same%20requests%20with%20different%20arguments)
+GraphQL variables
+
+<https://shopify.dev/docs/apps/build/graphql/basics/variables>
+
+[\[37\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Legacy)
+[\[38\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=GraphQL%20is%20Shopify%27s%20technology%20of,worked%20with%20a%20REST%20API)
+[\[40\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=You%20can%20migrate%20your%20apps,of%20the%20benefits%20of%20GraphQL)
+[\[41\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Anchor%20to%20Getting%20startedGetting%20started)
+[\[42\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=Explore%20the%20following%20developer%20tools,more%20about%20Shopify%20GraphQL%20APIs)
+[\[43\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=GraphQL%20Admin%20API%20reference%20Consult,GraphQL%20Admin%20and%20Storefront%20APIs)
+[\[194\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=The%20REST%20Admin%20API%20is,to%20the%20GraphQL%20Admin%20API)
+[\[195\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=The%20REST%20Admin%20API%20is,to%20the%20GraphQL%20Admin%20API)
+[\[196\]](https://shopify.dev/docs/apps/build/graphql/migrate#:~:text=operations%2C%20and%20get%20interactive%20help,Shopify%20data%20for%20high%20accuracy)
+About REST to GraphQL migration
+
+<https://shopify.dev/docs/apps/build/graphql/migrate>
+
+[\[39\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=However%2C%20some%20REST%20resources%20and,split%20between%20multiple%20GraphQL%20mutations)
+[\[44\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=When%20you%20begin%20using%20GraphQL%2C,using%20REST%20in%20their%20apps)
+[\[45\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Many%20REST%20Admin%20API%20resources,query%20or%20mutation%20in%20GraphQL)
+[\[46\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=Retrieving%20information%20about%20a%20single,similar%20in%20REST%20and%20GraphQL)
+[\[47\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=REST)
+[\[50\]](https://shopify.dev/docs/apps/build/graphql/migrate/learn-how#:~:text=,27)
+Migrate to GraphQL from REST
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/learn-how>
+
+[\[48\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=Anchor%20to%20Mapping%20Product%20and,IDs%20to%20Graph%20QL%20GIDs)
+[\[49\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=When%20migrating%20from%20REST%20to,using%20an%20existing%20REST%20ID)
+[\[84\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=By%20default%2C%20stores%20have%20a,preview%20by%20following%20these%20steps)
+[\[85\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=4,name)
+[\[86\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=Anchor%20to%20Mapping%20Product%20and,IDs%20to%20Graph%20QL%20GIDs)
+[\[87\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test#:~:text=A%20key%20task%20will%20be,the%20corresponding%20GraphQL%20reference%20documentation)
+Get started migrating and test your app
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/migrate-and-test>
+
+[\[52\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20client%20type)
+[\[53\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20method%20Instead%20of,Add%20a%20query)
+[\[54\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Destructure%20the%20response)
+[\[55\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Remix%3A%20Instead%20of%20creating%20an,create%20an%20admin.graphql%20client)
+[\[56\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Add%20a%20query)
+[\[57\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=You%20don%27t%20need%20to%20update,update%20from%20REST%20to%20GraphQL)
+[\[203\]](https://shopify.dev/docs/apps/build/graphql/migrate/libraries#:~:text=Change%20the%20client%20type)
+Update API calls in your app
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/libraries>
+
+[\[58\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=In%20early%202024%2C%20Shopify%20introduced,the%20process%20of%20updating%20files)
+[\[59\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=Anchor%20to%20ProductsProducts)
+[\[60\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=For%20example%2C%20if%20an%20app,the%20following%20REST%20API%20call)
+[\[61\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=mutation%20)
+[\[62\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=)
+[\[63\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=file%20)
+[\[64\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=system%20uses%20a%20single%20file,the%20process%20of%20updating%20files)
+[\[65\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=When%20working%20with%20collections%2C%20the,files%20to%20collection%20mutations%20directly)
+[\[66\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model#:~:text=1,file%27s%20GID%20using%20fileCreate)
+Update your app to use the new files model
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-files-model>
+
+[\[67\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=Shopify%20has%20updated%20the%20GraphQL,04%60%20releases)
+[\[68\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=Apps%20using%20the%20following%20deprecated,APIs%20in%20the%20following%20scenarios)
+[\[72\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=GraphQL%20Admin%20API%20,01%20or%20earlier)
+[\[73\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=,by%20February%202025)
+[\[74\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=,field)
+[\[104\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model#:~:text=GraphQL%20Admin%20API%20,01%20or%20earlier)
+Using the latest GraphQL product APIs
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model>
+
+[\[69\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=,43)
+[\[70\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=To%20manage%20option%20values%20with,in%20the%20GraphQL%20Admin%20API)
+[\[71\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=Tip)
+[\[75\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=Anchor%20to%20Webhook%20updatesWebhook%20updates)
+[\[204\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=,admin_graphql_api_id%3A%20ID)
+[\[205\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates#:~:text=)
+API updates
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/api-updates>
+
+[\[76\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=In%20the%20new%20product%20model%2C,push%20it%20back%20to%20Shopify)
+[\[77\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Anchor%20to%20First,class%20options%20and%20option%20values)
+[\[78\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=align%20Shopify%20data%20with%20your,mutations%20described%20in%20this%20section)
+[\[79\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Some%20of%20our%20existing%20workflows%2C,were%20prone%20to%20data%20clobbering)
+[\[80\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=For%20example%2C%20if%20Shopify%20is,was%20implicit%2C%20rather%20than%20explicit)
+[\[81\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=)
+[\[82\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Note)
+[\[83\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components#:~:text=Learn%20about%20some%20key%20differences,products%2C%20variants%2C%20and%20related%20resources)
+Product model and components
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/product-model-components>
+
+[\[88\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=Retrieving%20a%20list%20of%20product,to%20retrieve%20the%20remaining%2050)
+[\[89\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=to%20retrieve%20250%20variants%20and,to%20retrieve%20the%20remaining%2050)
+[\[90\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=Anchor%20to%20Fragments%20example%3A%20Product,fieldsFragments%20example%3A%20Product%20fields)
+[\[91\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data#:~:text=fragment%20ProductFields%20on%20Product%20)
+Retrieve product data using the new product model
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/retrieve-data>
+
+[\[92\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data#:~:text=You%20want%20to%20create%20a,product%20with%20the%20following%20data)
+[\[93\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data#:~:text=,option%20values)
+[\[94\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data#:~:text=The%20following%20diagram%20represents%20the,shape%20of%20the%20product%20data)
+Add product data using the new product model
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/add-data>
+
+[\[95\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=default%20is%20asynchronous)
+[\[96\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=The%20productSet%20mutation%20has%20an,100%20variants%20when%20run%20synchronously)
+[\[97\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=Anchor%20to%20Create%20a%20product,with%20variants%20and%20options%20asynchronously)
+[\[98\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data#:~:text=,Blue)
+Sync product data from an external source
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/sync-data>
+
+[\[99\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=The%20updated%20Shopify%20product%20taxonomy,within%20Shopify%20and%20numerous%20marketplaces)
+[\[100\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=integrated%20within%20Shopify%20and%20numerous,marketplaces)
+[\[101\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=Anchor%20to%20Linking%20product%20options,metafieldsLinking%20product%20options%20to%20metafields)
+[\[102\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=Anchor%20to%20Step%201%3A%20Create,metaobject%20entries%20for%20your%20attributes)
+[\[103\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=mutation%20MetaobjectCreate%28%24metaobject%3A%20MetaobjectCreateInput%21%29%20)
+[\[192\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=)
+[\[193\]](https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked#:~:text=By%20using%20metaobjects%20to%20model,variants%20for%20each%20attribute%20value)
+Metafield-linked product options
+
+<https://shopify.dev/docs/apps/build/graphql/migrate/new-product-model/metafield-linked>
+
+[\[105\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=An%20app%20extension%20surfaces%20the,quick%2C%20frequent%20actions%20from%20users)
+[\[106\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=For%20example%2C%20your%20app%27s%20actions,POS)
+[\[107\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Without%20an%20app,extensionWithout%20an%20app%20extension)
+[\[108\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20With%20an%20app,extensionWith%20an%20app%20extension)
+[\[109\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Note)
+[\[128\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Configuring%20app%20extensionsConfiguring,app%20extensions)
+[\[130\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Extension)
+[\[146\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Versioning%20and%20deploymentVersioning,and%20deployment)
+[\[147\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=When%20you%20run%20the%20deploy,version%20from%20the%20Partner%20Dashboard)
+[\[148\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Reviews%20and%20approvalsReviews,and%20approvals)
+[\[149\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Some%20app%20extensions%20need%20to,before%20they%27re%20released%20to%20users)
+[\[158\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Creating%20app%20extensionsCreating,app%20extensions)
+[\[159\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Next%20stepsNext%20steps)
+[\[160\]](https://shopify.dev/docs/apps/build/app-extensions#:~:text=Anchor%20to%20Next%20stepsNext%20steps)
+App extensions
+
+<https://shopify.dev/docs/apps/build/app-extensions>
+
+[\[110\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20adminAdmin%20actions%20No%20Shopify,Allow%20users%20to%20configure%20app)
+[\[112\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Checkout%20%2031No%20Shopify%20CLI,marketing%20campaign%20optimization%20and%20analytics)
+[\[113\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=page%20in%20the%20Shopify%20admin,enabled%20application)
+[\[114\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Discount%20function%20settings%20No%20Shopify,navigation%20items%20consistently%20across%20devices)
+[\[115\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=discounts%20on%20the%20discount%20details,that%20allows%20users%20to%20see)
+[\[116\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=the%20subscription%20details%20in%20your,increase%20sales%20by%20adding%20products)
+[\[117\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Web%20pixel%20No%20Shopify%20CLI,example%20workflow%20that%27s%20available%20in)
+[\[122\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Lifecycle%20Events%20No%20Partner%20Dashboard,CLI%20Allow%20customers%20to%20complete)
+[\[123\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=collect%20behavioral%20data%20for%20marketing,47No%20Shopify%20CLI%20Add%20custom)
+[\[124\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20interface%20area%20App%20extension,to%20your%20app%20from%20any)
+[\[125\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Subscription%20link%20No%20Shopify%20CLI,such%20as%20checkout%20or%20cart)
+[\[126\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Shopify%20Functions%20No%20Shopify%20CLI,to%20Shopify%20Flow%20so%20that)
+[\[206\]](https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions#:~:text=Description%20Shopify%20adminAdmin%20actions%20No,page%20in%20the%20Shopify%20admin)
+List of app extensions
+
+<https://shopify.dev/docs/apps/build/app-extensions/list-of-app-extensions>
+
+[\[111\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Domain%20Extension%20type%20Merchant%20experience,enabled)
+[\[118\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Checkout%20%2035blocks%20Shopify%20CLI,your%20app%20to%20Shopify%20Flow)
+[\[119\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Post,your%20app%20to%20Shopify%20Flow)
+[\[120\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Flow%20%2041actions%20Shopify%20CLI,copied%20into%20a%20merchant%27s%20store)
+[\[121\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Flow%20triggers%20triggers%20Shopify%20CLI,areas%20in%20the%20POS%20app)
+[\[127\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Create%20a%20new%20app%2C%20give,only%20app)
+[\[131\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Extension,only%20apps%20on%20Shopify)
+[\[132\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Note)
+[\[133\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Note)
+[\[134\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20Create%20an%20extension,only%20app)
+[\[135\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=%24)
+[\[136\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20App%20extensions%20that,only%20app)
+[\[137\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Anchor%20to%20Converting%20to%20an,appConverting%20to%20an%20embedded%20app)
+[\[197\]](https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app#:~:text=Flow%20%2041actions%20Shopify%20CLI,copied%20into%20a%20merchant%27s%20store)
+Build an extension-only app
+
+<https://shopify.dev/docs/apps/build/app-extensions/build-extension-only-app>
+
+[\[129\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=When%20you%20generate%20an%20app,in%20your%20app%27s%20extension%20directory)
+[\[138\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=)
+[\[139\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=)
+[\[140\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=network_access%20%3D%20true)
+[\[141\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=,Differences%20in%20TOML%20file%20names)
+[\[142\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=Note)
+[\[143\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=Anchor%20to%20Extension%20typesExtension%20types)
+[\[144\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=)
+[\[145\]](https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions#:~:text=,Differences%20in%20TOML%20file%20names)
+Configure app extensions
+
+<https://shopify.dev/docs/apps/build/app-extensions/configure-app-extensions>
+
+[\[150\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=Anchor%20to%20Remove%20a%20dashboard,managed%20app%20extension)
+[\[151\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=4,page%2C%20click%20Delete)
+[\[152\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=The%20active%20app%20version%20represents,be%20used%20in%20Shopify%20stores)
+[\[153\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=1,and%20message%20for%20the%20version)
+[\[154\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=The%20contents%20of%20each%20app,managed%20extensions)
+[\[155\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=2,by%20running%20the%20following%20command)
+[\[156\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=%24)
+[\[157\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=Anchor%20to%20Restore%20a%20removed,extensionRestore%20a%20removed%20app%20extension)
+[\[207\]](https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension#:~:text=Anchor%20to%20Remove%20a%20dashboard,managed%20app%20extension)
+Remove an app extension
+
+<https://shopify.dev/docs/apps/build/app-extensions/remove-app-extension>
+
+[\[161\]](https://shopify.dev/docs/apps/build/functions#:~:text=,Rust%20%20and%20%2036)
+[\[162\]](https://shopify.dev/docs/apps/build/functions#:~:text=,line%20product%20data%20or%20metafields)
+[\[163\]](https://shopify.dev/docs/apps/build/functions#:~:text=specific%20data%20you%20need%20for,line%20product%20data%20or%20metafields)
+[\[164\]](https://shopify.dev/docs/apps/build/functions#:~:text=,like%20Shopify%20to%20carry%20out)
+[\[165\]](https://shopify.dev/docs/apps/build/functions#:~:text=The%20following%20diagram%20shows%20an,lifecycle%20of%20a%20Shopify%20Function)
+[\[166\]](https://shopify.dev/docs/apps/build/functions#:~:text=,made%20with%20the%20function%20configuration)
+[\[167\]](https://shopify.dev/docs/apps/build/functions#:~:text=Shopify%20Functions%20are%20never%20invoked,needed%20within%20the%20customer%20journey)
+[\[208\]](https://shopify.dev/docs/apps/build/functions#:~:text=specific%20data%20you%20need%20for,line%20product%20data%20or%20metafields)
+About Shopify Functions
+
+<https://shopify.dev/docs/apps/build/functions>
+
+[\[168\]](https://shopify.dev/docs/api/functions#:~:text=Shopify%20Functions%20allow%20developers%20to,following%20limitations%20apply%20to)
+[\[179\]](https://shopify.dev/docs/api/functions#:~:text=Targets%20Fetch%20target%20,network%20HTTPS%20call%20External%20service)
+[\[180\]](https://shopify.dev/docs/api/functions#:~:text=The%20fetch%20target%20is%20limited,that%20Function%27s%20API%20reference%20page)
+[\[190\]](https://shopify.dev/docs/api/functions#:~:text=,Other%20limitations)
+[\[191\]](https://shopify.dev/docs/api/functions#:~:text=,Other%20limitations)
+Function APIs - Shopify developer documentation
+
+<https://shopify.dev/docs/api/functions>
+
+[\[169\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=Function%20input%20queries%20can%20be,with%20arguments%20like%20%2028)
+[\[170\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=query%20Input%20)
+[\[171\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=Anchor%20to%20Step%201%3A%20Specify,Specify%20variables%20for%20your%20query)
+[\[172\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=16)
+[\[173\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=,26)
+[\[174\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=Anchor%20to%20RequirementsRequirements)
+[\[175\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=product%20)
+[\[176\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=15)
+[\[177\]](https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries#:~:text=id)
+Use variables in input queries
+
+<https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries>
+
+[\[178\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Network%20access%20for%20Shopify%20Functions,merchants%20on%20Shopify%20for%20enterprises)
+[\[181\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Network%20access%20for%20Shopify%20Functions,input%20of%20the%20run%20target)
+[\[182\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=1.%20The%20,the%20existing%20function%20input%20query)
+[\[183\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Anchor%20to%20Availability%20of%20network,of%20network%20access%20for%20functions)
+[\[184\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Discount%20FunctionsShopify%20for%20enterprises%20with,custom%20apps)
+[\[185\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Anchor%20to%20How%20it%20worksHow,it%20works)
+[\[186\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=2.%20The%20outcome%20of%20,to%20be%20executed)
+[\[187\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=,the%20Storefront%20API%20%40defer%20directive)
+[\[188\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=,API%20endpoints%20aren%27t%20supported)
+[\[189\]](https://shopify.dev/docs/apps/build/functions/network-access#:~:text=Read%20more%20about%20network%20request,caching%20in%20the%20Performance%20page)
+About network access for Shopify Functions
+
+<https://shopify.dev/docs/apps/build/functions/network-access>
