@@ -7,14 +7,19 @@ import { login } from "../../shopify.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
-  // For embedded apps, always redirect to /app
-  // Shopify will handle authentication via App Bridge
-  if (url.searchParams.get("shop")) {
+  // Check if this is an embedded app request
+  const isEmbedded = url.searchParams.get("embedded") === "1" ||
+                     url.searchParams.get("hmac") ||
+                     url.searchParams.get("shop") ||
+                     request.headers.get("sec-fetch-dest") === "iframe";
+
+  if (isEmbedded) {
+    // For embedded apps, redirect to /app with all parameters
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  // If no shop parameter, redirect to /app anyway for embedded apps
-  throw redirect("/app");
+  // For non-embedded access, show the login form
+  return { showForm: Boolean(login) };
 };
 
 export default function App() {
