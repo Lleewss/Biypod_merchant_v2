@@ -16,7 +16,7 @@ export async function checkPlanGating(
   merchantId: string,
   currentPath: string
 ): Promise<PlanGatingResult> {
-  // Skip plan gating for billing-related routes
+  // Skip plan gating for billing-related routes and initial app access
   const billingRoutes = [
     '/billing/plans',
     '/billing/callback',
@@ -25,7 +25,18 @@ export async function checkPlanGating(
     '/auth/callback'
   ];
 
-  const shouldSkipGating = billingRoutes.some(route => currentPath.startsWith(route));
+  // Allow initial access to main app route for onboarding
+  const allowedRoutes = [
+    '/app$', // Exact match for main app route
+    ...billingRoutes
+  ];
+
+  const shouldSkipGating = allowedRoutes.some(route => {
+    if (route === '/app$') {
+      return currentPath === '/app' || currentPath === '/app/';
+    }
+    return currentPath.startsWith(route);
+  });
   
   if (shouldSkipGating) {
     return {
