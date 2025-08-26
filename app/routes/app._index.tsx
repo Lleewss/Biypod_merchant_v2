@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData, Link } from "@remix-run/react";
+import { useLoaderData, Link, useNavigate } from "@remix-run/react";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { BiypodCard } from "../components/ui/BiypodCard";
 import { BiypodButton } from "../components/ui/BiypodButton";
@@ -39,6 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function Dashboard() {
   const { shop, subscription, hasActiveSubscription } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
 
   // Show onboarding flow if no active subscription
   if (!hasActiveSubscription) {
@@ -58,11 +59,13 @@ export default function Dashboard() {
             <p className="text-blue-200 mb-8">
               To get started, please select a plan that fits your business needs.
             </p>
-            <Link to="/billing/plans">
-              <BiypodButton variant="outline" className="border-white text-white hover:bg-white hover:text-primary text-lg px-8 py-3">
-                Choose Your Plan
-              </BiypodButton>
-            </Link>
+            <BiypodButton
+              variant="outline"
+              className="border-white text-white hover:bg-white hover:text-primary text-lg px-8 py-3"
+              onClick={() => navigate('/billing/plans')}
+            >
+              Choose Your Plan
+            </BiypodButton>
           </div>
         </BiypodCard>
 
