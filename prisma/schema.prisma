@@ -38,6 +38,93 @@ model Session {
   @@map("shopify_sessions")
 }
 
-// Note: Using existing Supabase tables - only adding Session table for Shopify integration
-// The existing tables (merchants, products, designs, etc.) are already in the database
-// and will be accessed via direct queries when needed
+// Billing and Subscription Management
+model Subscription {
+  id                    String    @id @default(cuid())
+  shopifySubscriptionId String?   @unique @map("shopify_subscription_id")
+  merchantId            String    @map("merchant_id")
+  planType              String    @map("plan_type") // 'free', 'starter', 'creator'
+  status                String    @default("pending") // 'pending', 'active', 'cancelled', 'expired'
+  recurringAmount       Decimal   @default(0) @map("recurring_amount")
+  usageFeePercentage    Decimal   @map("usage_fee_percentage") // 8.0, 5.0, 1.5
+  productLimit          Int       @map("product_limit") // 1, 20, 1000
+  trialDays             Int?      @map("trial_days")
+  trialStartDate        DateTime? @map("trial_start_date")
+  trialEndDate          DateTime? @map("trial_end_date")
+  currentPeriodStart    DateTime? @map("current_period_start")
+  currentPeriodEnd      DateTime? @map("current_period_end")
+  confirmationUrl       String?   @map("confirmation_url")
+  isTestCharge          Boolean   @default(false) @map("is_test_charge")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  usageRecords     UsageRecord[]
+  publishedProducts PublishedProduct[]
+
+  @@map("subscriptions")
+}
+
+model UsageRecord {
+  id                    String      @id @default(cuid())
+  subscriptionId        String      @map("subscription_id")
+  shopifyUsageRecordId  String?     @unique @map("shopify_usage_record_id")
+  orderId               String      @map("order_id")
+  orderNumber           String?     @map("order_number")
+  orderValue            Decimal     @map("order_value")
+  usageFee              Decimal     @map("usage_fee")
+  usageFeePercentage    Decimal     @map("usage_fee_percentage")
+  productIds            String[]    @map("product_ids") // Array of Biypod product IDs in the order
+  recordedAt            DateTime    @default(now()) @map("recorded_at")
+  billingPeriodStart    DateTime    @map("billing_period_start")
+  billingPeriodEnd      DateTime    @map("billing_period_end")
+  createdAt             DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("usage_records")
+}
+
+model PublishedProduct {
+  id                    String    @id @default(cuid())
+  subscriptionId        String    @map("subscription_id")
+  merchantId            String    @map("merchant_id")
+  biypodProductId       String    @map("biypod_product_id")
+  shopifyProductId      String    @map("shopify_product_id")
+  shopifyVariantId      String?   @map("shopify_variant_id")
+  productTitle          String    @map("product_title")
+  productHandle         String    @map("product_handle")
+  customizerUrl         String?   @map("customizer_url")
+  isActive              Boolean   @default(true) @map("is_active")
+  publishedAt           DateTime  @default(now()) @map("published_at")
+  unpublishedAt         DateTime? @map("unpublished_at")
+  unpublishReason       String?   @map("unpublish_reason") // 'plan_downgrade', 'manual', 'limit_exceeded'
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, biypodProductId])
+  @@map("published_products")
+}
+
+model PlanChangeRequest {
+  id                String    @id @default(cuid())
+  merchantId        String    @map("merchant_id")
+  currentPlan       String    @map("current_plan")
+  requestedPlan     String    @map("requested_plan")
+  status            String    @default("pending") @map("status") // 'pending', 'approved', 'cancelled'
+  affectedProducts  Int       @default(0) @map("affected_products") // Number of products that will be unpublished
+  gracePeriodEnd    DateTime? @map("grace_period_end") // 5 days to upgrade back
+  requestedAt       DateTime  @default(now()) @map("requested_at")
+  processedAt       DateTime? @map("processed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("plan_change_requests")
+}
+
+// Note: Using existing Supabase tables for merchants, products, designs, etc.
+// These new tables integrate with the existing infrastructure
