@@ -1,17 +1,34 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import { BiypodLogo } from "../components/ui/BiypodLogo";
-
+import { checkPlanGating } from "../lib/billing/plan-gating.server";
 
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const { shop } = session;
 
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  // Check plan gating for all app routes
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+
+  // Apply plan gating to all app routes except billing routes
+  const gatingResult = await checkPlanGating(shop, pathname);
+
+  if (gatingResult.shouldRedirect && gatingResult.redirectUrl) {
+    // Use server-side redirect for plan gating
+    throw redirect(gatingResult.redirectUrl);
+  }
+
+  return {
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    subscription: gatingResult.subscription
+  };
 };
 
 export default function App() {
