@@ -58,14 +58,16 @@ export default function Dashboard() {
             <p className="text-blue-200 mb-8">
               To get started, please select a plan that fits your business needs.
             </p>
-            <Link to="/billing/plans">
-              <BiypodButton
-                variant="outline"
-                className="border-white text-white hover:bg-white hover:text-primary text-lg px-8 py-3"
-              >
-                Choose Your Plan
-              </BiypodButton>
-            </Link>
+            <BiypodButton
+              variant="outline"
+              className="border-white text-white hover:bg-white hover:text-primary text-lg px-8 py-3"
+              onClick={() => {
+                // Force full page navigation for embedded app compatibility
+                window.location.href = '/billing/plans' + window.location.search;
+              }}
+            >
+              Choose Your Plan
+            </BiypodButton>
           </div>
         </BiypodCard>
 
