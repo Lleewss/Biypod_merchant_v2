@@ -5,7 +5,7 @@ import {
   shopifyApp,
   DeliveryMethod,
 } from "@shopify/shopify-app-remix/server";
-import { MemorySessionStorage } from "@shopify/shopify-app-session-storage-memory";
+import { SupabaseSessionStorage } from "./lib/supabase-session-storage";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -15,7 +15,7 @@ const shopify = shopifyApp({
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
   useOnlineTokens: true,
-  sessionStorage: new MemorySessionStorage(),
+  sessionStorage: new SupabaseSessionStorage(),
   distribution: AppDistribution.AppStore,
 
   webhooks: {
