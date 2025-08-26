@@ -1,7 +1,7 @@
 // Billing Callback - Handle Shopify billing approval/cancellation
 import { redirect, type LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
-import { SubscriptionService } from "../lib/billing/subscription.server";
+import { SupabaseSubscriptionService } from "../lib/billing/supabase-subscription.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await authenticate.admin(request);
@@ -17,7 +17,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     // Find the subscription by Shopify subscription ID
-    const subscription = await SubscriptionService.getSubscriptionByShopifyId(charge_id);
+    const subscription = await SupabaseSubscriptionService.getSubscriptionByShopifyId(charge_id);
     
     if (!subscription) {
       console.error('Subscription not found for charge_id:', charge_id);
@@ -29,10 +29,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // For now, we'll assume the subscription was approved if we reach this callback
     
     // Update subscription status to active
-    await SubscriptionService.updateSubscriptionStatus(
+    await SupabaseSubscriptionService.updateSubscriptionStatus(
       subscription.id,
-      'active',
-      charge_id
+      'active'
     );
 
     console.log(`Subscription activated for merchant ${shop}, plan: ${subscription.planType}`);

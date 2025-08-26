@@ -4,8 +4,8 @@ import { useLoaderData, useActionData, useNavigation } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import { PlanSelection } from "../components/billing/PlanSelection";
 import { ShopifyBillingManager } from "../lib/billing/shopify-billing";
-import { SubscriptionService } from "../lib/billing/subscription.server";
-import { PlanType } from "../lib/billing/plans";
+import { SupabaseSubscriptionService } from "../lib/billing/supabase-subscription.server";
+import { PlanType, BIYPOD_PLANS } from "../lib/billing/plans";
 
 interface LoaderData {
   shop: {
@@ -27,7 +27,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { shop } = session;
 
   // Get current subscription if any
-  const currentSubscription = await SubscriptionService.getActiveSubscription(shop);
+  const currentSubscription = await SupabaseSubscriptionService.getActiveSubscription(shop);
 
   // Get URL parameters
   const url = new URL(request.url);
@@ -83,12 +83,18 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
+    // Get plan details
+    const planDetails = BIYPOD_PLANS[planType];
+
     // Save subscription to database
-    const subscriptionId = await SubscriptionService.createSubscription({
+    const subscriptionId = await SupabaseSubscriptionService.createSubscription({
       shopifySubscriptionId: subscriptionResult.id,
       merchantId: shop,
       planType,
-      status: subscriptionResult.status,
+      recurringAmount: planDetails.recurringAmount,
+      usageFeePercentage: planDetails.usageFeePercentage,
+      productLimit: planDetails.productLimit,
+      trialDays: planDetails.trialDays,
       confirmationUrl: subscriptionResult.confirmationUrl,
       isTestCharge: isDev
     });
