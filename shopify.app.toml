@@ -2,7 +2,7 @@
 
 client_id = "a453743bac2dfca1f0e8712e98c255cd"
 name = "Biypod"
-application_url = "https://sin-such-dating-adjacent.trycloudflare.com"
+application_url = "https://app.biypod.com"
 embedded = true
 handle = "biypod"
 
@@ -39,7 +39,7 @@ api_version = "2025-07"
 scopes = "read_products,write_products,read_orders,write_orders,read_customers,write_customers,read_themes,write_themes,read_publications,write_publications"
 
 [auth]
-redirect_urls = ["https://sin-such-dating-adjacent.trycloudflare.com/auth/callback", "https://sin-such-dating-adjacent.trycloudflare.com/auth/shopify/callback", "https://sin-such-dating-adjacent.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://app.biypod.com/auth/callback", "https://app.biypod.com/auth/shopify/callback", "https://app.biypod.com/api/auth/callback"]
 
 [pos]
 embedded = false
