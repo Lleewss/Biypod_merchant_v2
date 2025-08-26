@@ -1,6 +1,6 @@
 // Plan Gating Middleware - Ensures merchants have active subscriptions
 import { redirect } from "@remix-run/node";
-import { SubscriptionService } from "./subscription.server";
+import { SupabaseSubscriptionService } from "./supabase-subscription.server";
 
 export interface PlanGatingResult {
   hasActiveSubscription: boolean;
@@ -36,7 +36,7 @@ export async function checkPlanGating(
   }
 
   try {
-    const subscription = await SubscriptionService.getActiveSubscription(merchantId);
+    const subscription = await SupabaseSubscriptionService.getActiveSubscription(merchantId);
     
     // No subscription found - redirect to plan selection
     if (!subscription) {
@@ -116,7 +116,7 @@ export async function checkFeatureAccess(
   planType: string;
   upgradeRequired?: string;
 }> {
-  const subscription = await SubscriptionService.getActiveSubscription(merchantId);
+  const subscription = await SupabaseSubscriptionService.getActiveSubscription(merchantId);
   
   if (!subscription || subscription.status !== 'active') {
     return {
@@ -202,7 +202,7 @@ export async function getMerchantPlanStatus(merchantId: string): Promise<{
   };
   nextBillingDate?: Date;
 }> {
-  const subscription = await SubscriptionService.getActiveSubscription(merchantId);
+  const subscription = await SupabaseSubscriptionService.getActiveSubscription(merchantId);
   
   if (!subscription) {
     return {
