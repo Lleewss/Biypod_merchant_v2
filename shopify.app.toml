@@ -2,7 +2,7 @@
 
 client_id = "a453743bac2dfca1f0e8712e98c255cd"
 name = "Biypod"
-application_url = "https://app.biypod.com"
+application_url = "https://app.biypod.com/app"
 embedded = true
 handle = "biypod"
 

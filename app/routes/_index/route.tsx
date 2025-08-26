@@ -7,9 +7,15 @@ import { login } from "../../shopify.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
-  // For Shopify-managed installation, always redirect to /app
-  // Shopify will handle authentication via App Bridge and token exchange
-  if (url.searchParams.get("shop")) {
+  // Check if this is an embedded app request from Shopify
+  const isEmbedded = url.searchParams.get("embedded") === "1" ||
+                     url.searchParams.get("shop") ||
+                     url.searchParams.get("hmac") ||
+                     request.headers.get("sec-fetch-dest") === "iframe" ||
+                     request.headers.get("referer")?.includes("admin.shopify.com");
+
+  // For embedded apps, redirect to /app route for token exchange authentication
+  if (isEmbedded) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
