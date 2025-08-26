@@ -59,6 +59,9 @@ export default function App() {
         <Link to="/app/settings">
           Settings
         </Link>
+        <Link to="/billing/plans">
+          Plans
+        </Link>
       </NavMenu>
 
       <div className="min-h-screen bg-neutral-50">
