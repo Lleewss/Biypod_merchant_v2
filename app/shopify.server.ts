@@ -18,9 +18,6 @@ const shopify = shopifyApp({
   sessionStorage: new MemorySessionStorage(),
   distribution: AppDistribution.AppStore,
 
-  // Enable new embedded auth strategy for proper App Bridge integration
-  unstable_newEmbeddedAuthStrategy: true,
-
   webhooks: {
     APP_UNINSTALLED: {
       deliveryMethod: DeliveryMethod.Http,
