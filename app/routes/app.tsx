@@ -12,35 +12,26 @@ import { authenticate } from "../shopify.server";
 
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  try {
-    const { session } = await authenticate.admin(request);
-    const { shop } = session;
+  // Use Shopify-managed installation with token exchange
+  const { session } = await authenticate.admin(request);
+  const { shop } = session;
 
-    // Check plan gating for all app routes
-    const url = new URL(request.url);
-    const pathname = url.pathname;
+  // Check plan gating for all app routes
+  const url = new URL(request.url);
+  const pathname = url.pathname;
 
-    // Apply plan gating to all app routes except billing routes
-    const gatingResult = await checkPlanGating(shop, pathname);
+  // Apply plan gating to all app routes except billing routes
+  const gatingResult = await checkPlanGating(shop, pathname);
 
-    if (gatingResult.shouldRedirect && gatingResult.redirectUrl) {
-      // Use server-side redirect for plan gating
-      throw redirect(gatingResult.redirectUrl);
-    }
-
-    return {
-      apiKey: process.env.SHOPIFY_API_KEY || "",
-      subscription: gatingResult.subscription
-    };
-  } catch (error) {
-    // If authentication fails, log the error and redirect to auth
-    console.error("App authentication failed:", error);
-
-    // For embedded apps, this should not happen, but if it does,
-    // redirect to the auth flow
-    const url = new URL(request.url);
-    throw redirect(`/auth/login?${url.searchParams.toString()}`);
+  if (gatingResult.shouldRedirect && gatingResult.redirectUrl) {
+    // Use server-side redirect for plan gating
+    throw redirect(gatingResult.redirectUrl);
   }
+
+  return {
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    subscription: gatingResult.subscription
+  };
 };
 
 export default function App() {
