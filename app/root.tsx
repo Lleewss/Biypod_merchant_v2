@@ -22,6 +22,8 @@ export default function App() {
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <Meta />
         <Links />
+        {/* App Bridge script - MANDATORY for embedded apps */}
+        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
       </head>
       <body className="h-full bg-neutral-50">
         <Outlet />

@@ -7,11 +7,14 @@ import { login } from "../../shopify.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
+  // For embedded apps, always redirect to /app
+  // Shopify will handle authentication via App Bridge
   if (url.searchParams.get("shop")) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  return { showForm: Boolean(login) };
+  // If no shop parameter, redirect to /app anyway for embedded apps
+  throw redirect("/app");
 };
 
 export default function App() {
