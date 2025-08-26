@@ -9,6 +9,8 @@ import { checkPlanGating } from "../lib/billing/plan-gating.server";
 
 import { authenticate } from "../shopify.server";
 
+
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     const { session } = await authenticate.admin(request);
@@ -96,5 +98,9 @@ export function ErrorBoundary() {
 }
 
 export const headers: HeadersFunction = (headersArgs) => {
-  return boundary.headers(headersArgs);
+  return {
+    ...boundary.headers(headersArgs),
+    "X-Frame-Options": "ALLOWALL",
+    "Content-Security-Policy": "frame-ancestors 'self' https://*.shopify.com https://*.myshopify.com https://admin.shopify.com",
+  };
 };

@@ -1,3 +1,4 @@
+import type { HeadersFunction } from "@remix-run/node";
 import {
   Links,
   Meta,
@@ -6,6 +7,11 @@ import {
   ScrollRestoration,
 } from "@remix-run/react";
 import globalStyles from "./styles/globals.css?url";
+
+export const headers: HeadersFunction = () => ({
+  "X-Frame-Options": "ALLOWALL",
+  "Content-Security-Policy": "frame-ancestors 'self' https://*.shopify.com https://*.myshopify.com https://admin.shopify.com",
+});
 
 export const links = () => [
   { rel: "stylesheet", href: globalStyles },

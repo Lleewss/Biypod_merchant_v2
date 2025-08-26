@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
 import { Form, useActionData, useLoaderData } from "@remix-run/react";
 import { BiypodCard } from "../../components/ui/BiypodCard";
 import { BiypodButton } from "../../components/ui/BiypodButton";
@@ -8,6 +8,11 @@ import { BiypodLogo } from "../../components/ui/BiypodLogo";
 import { login } from "../../shopify.server";
 
 import { loginErrorMessage } from "./error.server";
+
+export const headers: HeadersFunction = () => ({
+  "X-Frame-Options": "ALLOWALL",
+  "Content-Security-Policy": "frame-ancestors 'self' https://*.shopify.com https://*.myshopify.com https://admin.shopify.com",
+});
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const errors = loginErrorMessage(await login(request));
