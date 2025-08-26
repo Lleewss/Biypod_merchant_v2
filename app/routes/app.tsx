@@ -4,21 +4,14 @@ import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import { BiypodLogo } from "../components/ui/BiypodLogo";
-import { requireActiveSubscription } from "../lib/billing/plan-gating.server";
+
 
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const { shop } = session;
+  await authenticate.admin(request);
 
-  // Enforce plan gating - redirect to plan selection if no active subscription
-  const subscription = await requireActiveSubscription(shop, new URL(request.url).pathname);
-
-  return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
-    subscription
-  };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
 export default function App() {

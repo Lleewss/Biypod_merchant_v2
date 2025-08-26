@@ -4,9 +4,14 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { BiypodCard } from "../components/ui/BiypodCard";
 import { BiypodButton } from "../components/ui/BiypodButton";
 import { authenticate } from "../shopify.server";
+import { requireActiveSubscription } from "../lib/billing/plan-gating.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const { shop: shopDomain } = session;
+
+  // Enforce plan gating - redirect to plan selection if no active subscription
+  const subscription = await requireActiveSubscription(shopDomain, new URL(request.url).pathname);
 
   // Get basic shop info
   const response = await admin.graphql(`
@@ -25,7 +30,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { data } = await response.json();
   const { shop } = data;
 
-  return { shop };
+  return { shop, subscription };
 };
 
 export default function Dashboard() {
